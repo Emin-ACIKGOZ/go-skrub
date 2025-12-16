@@ -38,6 +38,13 @@ func NewSliceChain(target any, name string) *SliceChain {
 // Validate returns core.ErrMisuse if the target value is not a slice after
 // resolving all pointers and interfaces.
 func (c *SliceChain) Validate(ctx *core.Context) error {
+	// Ensure a non-nil context is used for pathing and configuration, even if the user
+	// did not provide one (e.g., if Validate is called directly).
+	// Moving this check here prevents accidental state resets deeper in the call stack.
+	if ctx == nil {
+		ctx = core.NewContext(core.Config{})
+	}
+
 	if err := c.Acquire(); err != nil {
 		return err
 	}
@@ -78,12 +85,6 @@ func (c *SliceChain) Validate(ctx *core.Context) error {
 func (c *SliceChain) validateElements(ctx *core.Context, val reflect.Value) error {
 	if len(c.elementTemplates) == 0 {
 		return nil
-	}
-
-	// Ensure a non-nil context is used for pathing and configuration, even if the user
-	// did not provide one (e.g., if Validate is called directly).
-	if ctx == nil {
-		ctx = core.NewContext(core.Config{})
 	}
 
 	count := val.Len()

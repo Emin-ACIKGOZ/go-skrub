@@ -152,3 +152,22 @@ func TestSliceChainRecursion(t *testing.T) {
 		}
 	})
 }
+
+func TestSliceChainNilContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ValidateWithNilContext", func(t *testing.T) {
+		t.Parallel()
+		tags := []string{"a", "b"}
+		chain := chains.NewSliceChain(&tags, "tags")
+
+		// 1. Pass nil to Validate.
+		// This forces the new logic in SliceChain.Validate to create the default context.
+		err := chain.MinLen(3).Validate(nil)
+
+		// 2. Verify it still behaves correctly (fails validation).
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "slice length is less than minimum" {
+			t.Errorf("Expected MinLen failure with nil context, got: %v", err)
+		}
+	})
+}
