@@ -68,7 +68,6 @@ func setup(_ *testing.T) {
 // --- Test Cases ---
 
 func TestRegisterAndGetChain(t *testing.T) {
-	t.Parallel()
 	setup(t)
 
 	// 1. Setup: Register the MockFactory for *MockTarget
@@ -132,8 +131,6 @@ func TestRegisterAndGetChain(t *testing.T) {
 }
 
 func TestClearRegistry(t *testing.T) {
-	t.Parallel()
-	setup(t)
 
 	// 1. Register a type
 	skrub.Register(MockFactory)
@@ -162,8 +159,6 @@ func TestClearRegistry(t *testing.T) {
 }
 
 func TestConcurrentSafety(t *testing.T) {
-	// Mark test as parallel and set up the registry state.
-	t.Parallel()
 	setup(t)
 
 	const numRoutines = 100

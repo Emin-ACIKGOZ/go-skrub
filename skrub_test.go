@@ -139,8 +139,6 @@ func TestValidateWithConfig_ConfigurationDelegation(t *testing.T) {
 func TestValidateWithConfig_TargetIgnored(t *testing.T) {
 	t.Parallel()
 
-	rule := NewMockRule(nil)
-
 	tests := []struct {
 		name   string
 		target any
@@ -151,10 +149,12 @@ func TestValidateWithConfig_TargetIgnored(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rule.CallCount = 0
+			// Create a fresh rule for every parallel sub-test.
+			rule := NewMockRule(nil)
 
 			err := skrub.ValidateWithConfig(tt.target, core.Config{}, rule)
 
