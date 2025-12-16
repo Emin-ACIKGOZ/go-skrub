@@ -131,7 +131,6 @@ func TestRegisterAndGetChain(t *testing.T) {
 }
 
 func TestClearRegistry(t *testing.T) {
-
 	// 1. Register a type
 	skrub.Register(MockFactory)
 	var target MockTarget
