@@ -120,7 +120,12 @@ func (c *SliceChain) shouldSkipElement(elementValue reflect.Value) bool {
 func (c *SliceChain) validateElement(ctx *core.Context, elementValue reflect.Value, index int) error {
 	indexStr := "[" + strconv.Itoa(index) + "]"
 
-	childCtx := c.createChildContext(ctx, indexStr)
+	// Check for recursion depth error from createChildContext.
+	childCtx, err := c.createChildContext(ctx, indexStr)
+	if err != nil {
+		// Stop recursion immediately if depth limit is exceeded.
+		return err
+	}
 
 	// The target for binding is the resolved interface value, ensuring Templates
 	// operate on the concrete type, not the container (e.g., an interface or pointer).
@@ -139,7 +144,7 @@ func (c *SliceChain) validateElement(ctx *core.Context, elementValue reflect.Val
 // createChildContext handles the logic for path resolution and context depth checking.
 // It ensures that array index paths (e.g., [0]) are correctly nested within the
 // parent chain's path.
-func (c *SliceChain) createChildContext(ctx *core.Context, indexStr string) *core.Context {
+func (c *SliceChain) createChildContext(ctx *core.Context, indexStr string) (*core.Context, error) {
 	// If the parent context path is empty and the chain has a name, initialize the path.
 	// This ensures a correct root path like "MySlice[0]" instead of "[0]".
 	if ctx.Path == "" && c.Name != "" {
@@ -149,9 +154,8 @@ func (c *SliceChain) createChildContext(ctx *core.Context, indexStr string) *cor
 	}
 
 	// Use the effective context to enter the index path.
-	// The potential core.ErrRecursionDepth is propagated from the child rule's Validate call.
-	childCtx, _ := ctx.Enter(indexStr)
-	return childCtx
+	// Return the error (RecursionError) if MaxDepth is exceeded.
+	return ctx.Enter(indexStr)
 }
 
 // Reset clears the SliceChain's state, returning it to the state of a freshly

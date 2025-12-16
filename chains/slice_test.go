@@ -109,4 +109,46 @@ func TestSliceChainRecursion(t *testing.T) {
 			t.Fatalf("Expected deep path '%s', got: %s (Reason: %s)", expectedPath, fe.Path, fe.Reason)
 		}
 	})
+
+	t.Run("RecursionLimitEnforcement", func(t *testing.T) {
+		t.Parallel()
+
+		// 1. Configure a strict depth limit (MaxDepth = 2).
+		// Depth 0: Root
+		// Depth 1: outer[0]
+		// Depth 2: outer[0][0]
+		// Depth 3: outer[0][0][0] -> Should Fail
+		strictCtx := core.NewContext(core.Config{MaxDepth: 2})
+
+		// 2. Create a 3-dimensional nested slice (Matrix).
+		// matrix[0][0][0]
+		matrix := [][][]int{
+			{
+				{1},
+			},
+		}
+
+		// 3. Define a matrix validator (3 dimensions).
+		matrixTemplate := skrub.DefMatrix(3, skrub.DefInt())
+
+		// 4. Bind and Validate.
+		rule := matrixTemplate.Bind(&matrix, "matrix")
+		err := rule.Validate(strictCtx)
+
+		// 5. Assert that a RecursionError occurred.
+		if err == nil {
+			t.Fatal("Expected RecursionError, got success (infinite recursion exploit possible)")
+		}
+
+		re, ok := err.(*core.RecursionError)
+		if !ok {
+			t.Fatalf("Expected error type *core.RecursionError, got %T: %v", err, err)
+		}
+
+		// Check that it failed at the expected depth.
+		// Expected path: matrix[0][0][0]
+		if re.Depth <= 2 {
+			t.Errorf("RecursionError triggered too early at depth %d (MaxDepth 2)", re.Depth)
+		}
+	})
 }
