@@ -34,8 +34,8 @@ func TestIntChainValidation(t *testing.T) {
 		chain := chains.NewIntChain(&val, "score")
 		err := chain.Min(20).Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "value is less than minimum" {
-			t.Errorf("Expected min failure, got: %v", err)
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMinValue {
+			t.Errorf("Expected min failure with reason %q, got: %v", core.ReasonMinValue, err)
 		}
 	})
 

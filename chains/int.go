@@ -75,7 +75,7 @@ func (c *IntChain) Reset() {
 func (c *IntChain) Min(validationMin int) *IntChain {
 	c.validators = append(c.validators, func(v int) error {
 		if v < validationMin {
-			return core.NewFieldError("", v, "value is less than minimum")
+			return core.NewFieldError("", v, core.ReasonMinValue)
 		}
 		return nil
 	})
@@ -86,7 +86,7 @@ func (c *IntChain) Min(validationMin int) *IntChain {
 func (c *IntChain) Max(validationMax int) *IntChain {
 	c.validators = append(c.validators, func(v int) error {
 		if v > validationMax {
-			return core.NewFieldError("", v, "value exceeds maximum limit")
+			return core.NewFieldError("", v, core.ReasonMaxValue)
 		}
 		return nil
 	})

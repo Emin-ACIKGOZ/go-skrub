@@ -63,10 +63,10 @@ func (c *StringChain) Validate(ctx *core.Context) error {
 		if s, ok := unwrapped.(string); ok {
 			val = s
 		} else {
-			return core.ErrMisuse // Valuer did not return a string.
+			return core.ErrMisuse
 		}
 	default:
-		return core.ErrMisuse // Target is not a supported type.
+		return core.ErrMisuse
 	}
 
 	if isNil {
@@ -95,7 +95,7 @@ func (c *StringChain) Reset() {
 func (c *StringChain) Min(validationMin int) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
 		if utf8.RuneCountInString(v) < validationMin {
-			return core.NewFieldError("", v, "length is less than required minimum")
+			return core.NewFieldError("", v, core.ReasonMinLength)
 		}
 		return nil
 	})
@@ -107,7 +107,7 @@ func (c *StringChain) Min(validationMin int) *StringChain {
 func (c *StringChain) Max(validationMax int) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
 		if utf8.RuneCountInString(v) > validationMax {
-			return core.NewFieldError("", v, "length exceeds maximum limit")
+			return core.NewFieldError("", v, core.ReasonMaxLength)
 		}
 		return nil
 	})
@@ -123,33 +123,32 @@ func (c *StringChain) Pattern(pattern string) *StringChain {
 	re := regexp.MustCompile(pattern)
 	c.validators = append(c.validators, func(v string) error {
 		if !re.MatchString(v) {
-			return core.NewFieldError("", v, "value does not match required pattern")
+			return core.NewFieldError("", v, core.ReasonPattern)
 		}
 		return nil
 	})
 	return c
 }
 
-// Email enforces a basic email format using a standard, non-RFC-compliant regex.
+// Email enforces a basic email format using a standard regex.
 // It checks for the general structure: text@text.text using a globally compiled pattern.
 func (c *StringChain) Email() *StringChain {
 	// Uses the globally compiled emailRegex defined at package level (Perf P1.3).
 	c.validators = append(c.validators, func(v string) error {
 		if !emailRegex.MatchString(v) {
-			return core.NewFieldError("", v, "invalid email format")
+			return core.NewFieldError("", v, core.ReasonInvalidEmail)
 		}
 		return nil
 	})
 	return c
 }
 
-// UUID enforces the standard 8-4-4-4-12 hexadecimal string UUID format (version 1-5).
+// UUID enforces the standard UUID format.
 // It uses a globally compiled pattern for performance.
 func (c *StringChain) UUID() *StringChain {
-	// Uses the globally compiled uuidRegex defined at package level (Perf P1.3).
 	c.validators = append(c.validators, func(v string) error {
 		if !uuidRegex.MatchString(v) {
-			return core.NewFieldError("", v, "invalid UUID format")
+			return core.NewFieldError("", v, core.ReasonInvalidUUID)
 		}
 		return nil
 	})

@@ -27,8 +27,8 @@ func TestStringChainValidation(t *testing.T) {
 		chain := chains.NewStringChain(&val, "input")
 		err := chain.Min(10).Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "length is less than required minimum" {
-			t.Errorf("Expected min length failure, got: %v", err)
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMinLength {
+			t.Errorf("Expected min length failure with reason %q, got: %v", core.ReasonMinLength, err)
 		}
 	})
 
@@ -49,8 +49,8 @@ func TestStringChainValidation(t *testing.T) {
 		chain := chains.NewStringChain(&val, "uuid")
 		err := chain.UUID().Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "invalid UUID format" {
-			t.Errorf("Expected UUID failure, got: %v", err)
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonInvalidUUID {
+			t.Errorf("Expected UUID failure with reason %q, got: %v", core.ReasonInvalidUUID, err)
 		}
 	})
 
