@@ -9,6 +9,16 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
+// Package-level variables for globally compiled regular expressions.
+// This prevents expensive recompilation on every execution of Email() or UUID().
+var (
+	// emailRegex provides a generally useful, non-RFC-compliant pattern for basic email format validation.
+	emailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+	// uuidRegex enforces the standard 8-4-4-4-12 hexadecimal string UUID format (version 1-5), case-insensitive.
+	uuidRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
+)
+
 // StringChain is a bound validator for string values.
 // It supports binding to native *string types and any custom type that
 // implements the core.Valuer interface and unwraps to a string.
@@ -105,8 +115,10 @@ func (c *StringChain) Max(validationMax int) *StringChain {
 }
 
 // Pattern enforces that the string must match the provided regular expression.
-// The pattern is compiled during the call to Pattern; for optimal performance
-// in critical loops, pre-compile the regex outside the chain definition.
+// NOTE: The pattern is compiled *during* the call to Pattern; this is a CPU bottleneck.
+// For optimal performance in critical loops, use a globally defined regex and integrate
+// it with a custom validator via the Register feature, or ensure the chain definition
+// (template) is only built once.
 func (c *StringChain) Pattern(pattern string) *StringChain {
 	re := regexp.MustCompile(pattern)
 	c.validators = append(c.validators, func(v string) error {
@@ -119,12 +131,11 @@ func (c *StringChain) Pattern(pattern string) *StringChain {
 }
 
 // Email enforces a basic email format using a standard, non-RFC-compliant regex.
-// It checks for the general structure: text@text.text.
+// It checks for the general structure: text@text.text using a globally compiled pattern.
 func (c *StringChain) Email() *StringChain {
-	// A simple, generally useful regex for basic email format validation.
-	re := regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+	// Uses the globally compiled emailRegex defined at package level (Perf P1.3).
 	c.validators = append(c.validators, func(v string) error {
-		if !re.MatchString(v) {
+		if !emailRegex.MatchString(v) {
 			return core.NewFieldError("", v, "invalid email format")
 		}
 		return nil
@@ -133,11 +144,11 @@ func (c *StringChain) Email() *StringChain {
 }
 
 // UUID enforces the standard 8-4-4-4-12 hexadecimal string UUID format (version 1-5).
+// It uses a globally compiled pattern for performance.
 func (c *StringChain) UUID() *StringChain {
-	// Standard UUID format regex, case-insensitive.
-	re := regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
+	// Uses the globally compiled uuidRegex defined at package level (Perf P1.3).
 	c.validators = append(c.validators, func(v string) error {
-		if !re.MatchString(v) {
+		if !uuidRegex.MatchString(v) {
 			return core.NewFieldError("", v, "invalid UUID format")
 		}
 		return nil
