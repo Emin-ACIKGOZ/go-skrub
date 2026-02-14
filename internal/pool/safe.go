@@ -51,7 +51,10 @@ func NewSafePool(cfg Config) *SafePool {
 	if cfg.Factory != nil {
 		// Pre-populate the channel with factory-created items.
 		for i := 0; i < cfg.Capacity; i++ {
-			p.items <- cfg.Factory()
+			// Ensure only valid objects are added to the pool.
+			if item := cfg.Factory(); item != nil {
+				p.items <- item
+			}
 		}
 	}
 

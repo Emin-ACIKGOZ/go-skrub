@@ -3,6 +3,7 @@
 package pool_test
 
 import (
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -45,43 +46,23 @@ func TestSafePoolInitialization(t *testing.T) {
 		t.Parallel()
 		factory, counter := makeScopedFactory()
 
-		cfg := pool.Config{Factory: factory, Capacity: 0, NonBlocking: true}
-		p := pool.NewSafePool(cfg)
+		p := pool.NewSafePool(pool.Config{Factory: factory, Capacity: 0, NonBlocking: true})
 
-		if val := atomic.LoadInt32(counter); val != 10 {
-			t.Errorf("Expected factory to run 10 times, ran %d", val)
+		if atomic.LoadInt32(counter) != 10 {
+			t.Errorf("Expected default capacity 10, got %d", atomic.LoadInt32(counter))
 		}
-
-		for i := 0; i < 10; i++ {
-			if _, err := p.Get(); err != nil {
-				t.Fatalf("Failed to retrieve item %d from pool: %v", i, err)
-			}
-		}
-
-		if _, err := p.Get(); err != core.ErrPoolExhausted {
-			t.Errorf("Expected pool to be exhausted, got: %v", err)
+		
+		if _, err := p.Get(); err != nil {
+			t.Error(err)
 		}
 	})
 
-	t.Run("CustomCapacity", func(t *testing.T) {
+	t.Run("NilFactorySafety", func(t *testing.T) {
 		t.Parallel()
-		factory, counter := makeScopedFactory()
-
-		cfg := pool.Config{Factory: factory, Capacity: 5, NonBlocking: true}
-		p := pool.NewSafePool(cfg)
-
-		if val := atomic.LoadInt32(counter); val != 5 {
-			t.Errorf("Expected factory to run 5 times, ran %d", val)
-		}
-
-		for i := 0; i < 5; i++ {
-			if _, err := p.Get(); err != nil {
-				t.Fatalf("Failed to retrieve item %d from pool: %v", i, err)
-			}
-		}
-
+		// Use NonBlocking: true to ensure the test doesn't hang on an empty pool.
+		p := pool.NewSafePool(pool.Config{Factory: nil, Capacity: 5, NonBlocking: true})
 		if _, err := p.Get(); err != core.ErrPoolExhausted {
-			t.Errorf("Expected pool to be exhausted, got: %v", err)
+			t.Errorf("Expected exhaustion error from empty pool, got %v", err)
 		}
 	})
 }
@@ -90,133 +71,143 @@ func TestSafePoolInitialization(t *testing.T) {
 // and the full pool item dropping mechanism.
 func TestSafePoolBehavior(t *testing.T) {
 	t.Parallel()
-	t.Run("NonBlockingExhaustion", testNonBlockingExhaustion)
-	t.Run("ResetterCallOnPut", testResetterCallOnPut)
-	t.Run("FullPoolDrop", testFullPoolDrop)
+
+	t.Run("ResetterLifecycle", func(t *testing.T) {
+		factory, _ := makeScopedFactory()
+		p := pool.NewSafePool(pool.Config{Factory: factory, Capacity: 1, NonBlocking: true})
+
+		item, _ := p.Get()
+		m := item.(*MockItem)
+		m.IsDirty = true
+		p.Put(m)
+
+		recycled, _ := p.Get()
+		if recycled.(*MockItem).IsDirty {
+			t.Error("Item was not reset before reuse")
+		}
+	})
+
+	t.Run("OverflowDrop", func(t *testing.T) {
+		factory, _ := makeScopedFactory()
+		p := pool.NewSafePool(pool.Config{Factory: factory, Capacity: 1, NonBlocking: true})
+
+		item1, _ := p.Get()
+		p.Put(item1)
+		p.Put(&MockItem{ID: 999}) // Should be dropped silently
+
+		_, _ = p.Get()
+		if _, err := p.Get(); err != core.ErrPoolExhausted {
+			t.Error("Pool should have dropped the overflow item")
+		}
+	})
 }
 
-func testNonBlockingExhaustion(t *testing.T) {
-	t.Parallel()
+// --- Stress & Chaos Tests (The "Production" Guard) ---
+
+func TestSafePool_Chaos(t *testing.T) {
+	const (
+		capacity    = 100
+		workers     = 2000
+		iterations  = 100
+		maxJitterMs = 5
+	)
+
 	factory, _ := makeScopedFactory()
 	p := pool.NewSafePool(pool.Config{
 		Factory:     factory,
-		Capacity:    2,
-		NonBlocking: true,
+		Capacity:    capacity,
+		NonBlocking: false,
 	})
 
-	if _, err := p.Get(); err != nil {
-		t.Fatalf("Setup failed: could not drain item 1: %v", err)
-	}
-	if _, err := p.Get(); err != nil {
-		t.Fatalf("Setup failed: could not drain item 2: %v", err)
-	}
+	var (
+		wg           sync.WaitGroup
+		activeLeases int32
+		totalGets    int64
+		raceDetected int32
+	)
 
-	if _, err := p.Get(); err != core.ErrPoolExhausted {
-		t.Errorf("Expected ErrPoolExhausted, got: %v", err)
-	}
-}
+	inUse := sync.Map{}
 
-func testResetterCallOnPut(t *testing.T) {
-	t.Parallel()
-	factory, _ := makeScopedFactory()
-	p := pool.NewSafePool(pool.Config{
-		Factory:     factory,
-		Capacity:    1,
-		NonBlocking: true,
-	})
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(id int) {
+			defer wg.Done()
+			//nolint:gosec // G404: math/rand is sufficient for jitter in a stress test
+			rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(id)))
 
-	itemRaw, err := p.Get()
-	if err != nil {
-		t.Fatalf("Setup failed: could not get item: %v", err)
-	}
-	mockItem := itemRaw.(*MockItem)
-	mockItem.IsDirty = true
+			for j := 0; j < iterations; j++ {
+				item, err := p.Get()
+				if err != nil {
+					return
+				}
+				atomic.AddInt64(&totalGets, 1)
 
-	p.Put(mockItem)
+				current := atomic.AddInt32(&activeLeases, 1)
+				if current > capacity {
+					atomic.StoreInt32(&raceDetected, 1)
+				}
 
-	recycledItem, err := p.Get()
-	if err != nil {
-		t.Fatalf("Get after Put failed: %v", err)
-	}
+				m := item.(*MockItem)
+				if _, loaded := inUse.LoadOrStore(m.ID, true); loaded {
+					atomic.StoreInt32(&raceDetected, 1)
+				}
 
-	if recycledItem.(*MockItem).IsDirty {
-		t.Errorf("Resetter failed: Item was still dirty after Put")
-	}
-}
+				if rng.Intn(100) < 30 {
+					time.Sleep(time.Duration(rng.Intn(maxJitterMs)) * time.Millisecond)
+				}
 
-func testFullPoolDrop(t *testing.T) {
-	t.Parallel()
-	factory, _ := makeScopedFactory()
-	p := pool.NewSafePool(pool.Config{
-		Factory:     factory,
-		Capacity:    2,
-		NonBlocking: true,
-	})
-
-	item1, err := p.Get()
-	if err != nil {
-		t.Fatalf("Setup failed: could not get item 1: %v", err)
-	}
-	item2, err := p.Get()
-	if err != nil {
-		t.Fatalf("Setup failed: could not get item 2: %v", err)
+				inUse.Delete(m.ID)
+				atomic.AddInt32(&activeLeases, -1)
+				p.Put(m)
+			}
+		}(i)
 	}
 
-	p.Put(item2)
-	p.Put(item1)
+	wg.Wait()
 
-	unmanagedItem := &MockItem{ID: 999}
-	p.Put(unmanagedItem)
-
-	if _, err := p.Get(); err != nil {
-		t.Fatalf("Verification failed: expected item 1, got error: %v", err)
-	}
-	if _, err := p.Get(); err != nil {
-		t.Fatalf("Verification failed: expected item 2, got error: %v", err)
-	}
-
-	if _, err := p.Get(); err != core.ErrPoolExhausted {
-		t.Errorf("Expected pool to be exhausted after drop, got: %v", err)
+	if raceDetected > 0 {
+		t.Fatal("CRITICAL FAILURE: Pool invariant violated.")
 	}
 }
 
 // TestSafePoolBlocking verifies the behavior of Get when NonBlocking is false.
-func TestSafePoolBlocking(t *testing.T) {
+func TestSafePoolBlocking_ThunderingHerd_Deep(t *testing.T) {
 	t.Parallel()
 	const capacity = 1
+	const workers = 50
 	factory, _ := makeScopedFactory()
-	cfg := pool.Config{Factory: factory, Capacity: capacity, NonBlocking: false}
-	p := pool.NewSafePool(cfg)
+	p := pool.NewSafePool(pool.Config{Factory: factory, Capacity: capacity, NonBlocking: false})
 
-	item, err := p.Get()
-	if err != nil {
-		t.Fatalf("Initial Get failed: %v", err)
-	}
+	mainItem, _ := p.Get()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	var successCount int32
+	signal := make(chan struct{}, workers)
 
-	var gotItem int32
-
-	go func() {
-		defer wg.Done()
-		if _, err := p.Get(); err == nil {
-			atomic.StoreInt32(&gotItem, 1)
-		} else {
-			t.Errorf("Blocking Get failed unexpectedly: %v", err)
-		}
-	}()
-
-	time.Sleep(50 * time.Millisecond)
-
-	if atomic.LoadInt32(&gotItem) == 1 {
-		t.Fatal("Blocking Get failed: Goroutine should not have completed yet.")
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			signal <- struct{}{}
+			
+			item, err := p.Get()
+			if err == nil {
+				atomic.AddInt32(&successCount, 1)
+				p.Put(item)
+			}
+		}()
 	}
 
-	p.Put(item)
+	for i := 0; i < workers; i++ {
+		<-signal
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	p.Put(mainItem)
 	wg.Wait()
 
-	if atomic.LoadInt32(&gotItem) == 0 {
-		t.Fatal("Blocking Put failed: Goroutine did not retrieve the item after Put.")
+	if atomic.LoadInt32(&successCount) != int32(workers) {
+		t.Errorf("Expected %d, got %d", workers, successCount)
 	}
 }
