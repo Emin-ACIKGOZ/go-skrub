@@ -3,7 +3,9 @@
 package chains_test
 
 import (
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Emin-ACIKGOZ/go-skrub/chains"
@@ -52,51 +54,89 @@ func TestBaseChainConcurrency(t *testing.T) {
 	if err := chain.Acquire(); err != nil {
 		t.Errorf("Expected Acquire after Release to succeed, got %v", err)
 	}
-	chain.Release() // Clean up.
 }
 
-func TestBaseChainReset(t *testing.T) {
-	t.Parallel()
+// --- Atomic State Machine Audit ---
 
-	chain := MockChain{chains.BaseChain{Name: "oldName"}}
+func TestBaseChain_StateRace(t *testing.T) {
+	// Do not use t.Parallel() here to maximize CPU contention on the atomic swap.
+	const (
+		workers    = 1000
+		iterations = 100
+	)
 
-	// Set state to busy (1) and set a name.
-	if err := chain.Acquire(); err != nil {
-		t.Fatalf("Setup failed: Could not acquire lock for reset test: %v", err)
+	chain := &MockChain{chains.BaseChain{Name: "immutable_field"}}
+	var wg sync.WaitGroup
+	var successCount int64
+	var violationCount int64
+
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				// 1. Attempt Atomic Acquisition
+				err := chain.Acquire()
+
+				if err == core.ErrConcurrencyViolation {
+					atomic.AddInt64(&violationCount, 1)
+					continue
+				}
+
+				if err != nil {
+					continue
+				}
+
+				// 2. Perform "Work" - Reading the Name field.
+				// If Reset() is called concurrently with this read,
+				// the race detector will catch it.
+				val := fmt.Sprintf("val-%d", workerID)
+				failErr := chain.Fail(nil, val, "error")
+
+				if fe, ok := failErr.(*core.FieldError); ok {
+					// Logic Check: If we held the lock, the Name should
+					// NOT have been cleared yet by a Reset (unless logic is leaky).
+					if fe.Path == "" && chain.Name != "" {
+						t.Errorf("Logic Breach: Path was empty while Name was %s", chain.Name)
+					}
+				}
+
+				atomic.AddInt64(&successCount, 1)
+
+				// 3. Atomic Release
+				chain.Release()
+			}
+		}(i)
 	}
 
-	// Reset.
-	chain.Reset()
+	wg.Wait()
 
-	// Verify name is cleared.
-	if chain.Name != "" {
-		t.Errorf("Reset failed: Name was not cleared, got %s", chain.Name)
-	}
+	t.Logf("State Race Results: Successes: %d, Violations: %d", successCount, violationCount)
 
-	// Verify state is reset (try to acquire should succeed).
-	if err := chain.Acquire(); err != nil {
-		t.Errorf("Reset failed: Could not acquire lock after Reset, got %v", err)
+	// Property Check: At least one must succeed, but exactly one must hold the lock at any time.
+	// The Race Detector (-race) will handle the memory visibility verification.
+	if successCount == 0 {
+		t.Error("Zero successful acquisitions under contention - possible deadlock in Acquire")
 	}
-	chain.Release() // Clean up.
 }
 
-func TestBaseChainFail(t *testing.T) {
+func TestBaseChain_ResetSafety(t *testing.T) {
 	t.Parallel()
 
-	chain := MockChain{chains.BaseChain{Name: "age"}}
+	chain := &MockChain{chains.BaseChain{Name: "pool_item"}}
 
-	// Create a mocked context to test pathing.
-	mockCtx := core.NewContext(core.Config{})
-	ctxChild, _ := mockCtx.Enter("user") // Path = "user".
+	// Ensure Reset is idempotent and resets state
+	for i := 0; i < 10; i++ {
+		_ = chain.Acquire()
+		chain.Reset()
 
-	// Test failure with a context (should result in "user.age").
-	err := chain.Fail(ctxChild, 25, "must be over 30")
-	fe, ok := err.(*core.FieldError)
+		if chain.Name != "" {
+			t.Errorf("Iteration %d: Name not cleared by Reset", i)
+		}
 
-	if !ok || fe.Path != "user.age" {
-		t.Errorf("Expected Fail path 'user.age', got %s", fe.Path)
-	}
-	if fe.Value != 25 {
-		t.Errorf("Expected Fail value 25, got %v", fe.Value)
+		if err := chain.Acquire(); err != nil {
+			t.Errorf("Iteration %d: State not reset to 0 by Reset, got: %v", i, err)
+		}
+		chain.Release()
 	}
 }

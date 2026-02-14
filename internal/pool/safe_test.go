@@ -51,7 +51,7 @@ func TestSafePoolInitialization(t *testing.T) {
 		if atomic.LoadInt32(counter) != 10 {
 			t.Errorf("Expected default capacity 10, got %d", atomic.LoadInt32(counter))
 		}
-		
+
 		if _, err := p.Get(); err != nil {
 			t.Error(err)
 		}
@@ -189,7 +189,7 @@ func TestSafePoolBlocking_ThunderingHerd_Deep(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			signal <- struct{}{}
-			
+
 			item, err := p.Get()
 			if err == nil {
 				atomic.AddInt32(&successCount, 1)
