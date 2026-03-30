@@ -3,6 +3,7 @@
 package chains_test
 
 import (
+	"errors"
 	"testing"
 
 	skrub "github.com/Emin-ACIKGOZ/go-skrub"
@@ -148,4 +149,27 @@ func TestSliceChainNilContext(t *testing.T) {
 			t.Errorf("Expected MinLen failure with nil context, got: %v", err)
 		}
 	})
+}
+
+func TestSliceChain_HeterogeneousRebinding(t *testing.T) {
+	t.Parallel()
+
+	// Data with mixed types.
+	data := []any{100, "not-an-int"}
+
+	// Using IntDef on an any slice.
+	intTemplate := skrub.DefInt().Min(0)
+	chain := chains.NewSliceChain(&data, "mixed")
+
+	err := chain.Elements(intTemplate).Validate(nil)
+
+	// Verify that the IntChain flyweight caught the string type mismatch.
+	if !errors.Is(err, core.ErrMisuse) {
+		t.Errorf("Expected ErrMisuse for heterogeneous rebinding, got: %v", err)
+	}
+
+	// Verify path remains correct for the mismatched element.
+	if fe, ok := err.(*core.FieldError); ok && fe.Path != "mixed[1]" {
+		t.Errorf("Expected path 'mixed[1]', got %q", fe.Path)
+	}
 }

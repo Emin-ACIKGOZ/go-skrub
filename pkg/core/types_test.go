@@ -189,3 +189,24 @@ func TestContextRecursionSafety(t *testing.T) {
 		t.Errorf("RecursionError MaxDepth incorrect, got %d", re.MaxDepth)
 	}
 }
+
+func TestContext_StackUnderflowSafety(t *testing.T) {
+	t.Parallel()
+	ctx := core.NewContext(core.Config{})
+
+	// Force an underflow
+	ctx.Pop()
+	ctx.Pop()
+
+	// Logic Validation: If depth became negative, these pushes would be "free"
+	// and fail to trigger the overflow at the correct limit.
+	for i := 0; i < 100; i++ {
+		if err := ctx.Push("nest"); err != nil {
+			t.Fatalf("Push failed prematurely at level %d: %v", i+1, err)
+		}
+	}
+
+	if err := ctx.Push("overflow"); err == nil {
+		t.Error("Regression: Negative depth allowed undetected recursion beyond MaxDepth")
+	}
+}

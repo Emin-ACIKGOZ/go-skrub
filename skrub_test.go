@@ -159,3 +159,25 @@ func TestValidateWithConfig_TargetIgnored(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_GlobalPoolPanicRecovery(t *testing.T) {
+	badRule := &MockRule{
+		ValidateFn: func(_ *core.Context) error {
+			panic("engine crash")
+		},
+	}
+
+	// If the pool fails to recover contexts during panics, it will deadlock.
+	for i := 0; i < 150; i++ {
+		func() {
+			defer func() { _ = recover() }()
+			_ = skrub.Validate(nil, badRule)
+		}()
+	}
+
+	successRule := &MockRule{}
+	err := skrub.Validate(nil, successRule)
+	if err != nil {
+		t.Errorf("Global pool deadlocked after panics: %v", err)
+	}
+}
