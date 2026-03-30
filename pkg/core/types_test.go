@@ -9,6 +9,17 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
+// pushPaths is a test helper that sequentially pushes keys to the context,
+// immediately failing the test if any push operation yields an error.
+func pushPaths(t *testing.T, ctx *core.Context, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		if err := ctx.Push(p); err != nil {
+			t.Fatalf("Expected success pushing %q, got: %v", p, err)
+		}
+	}
+}
+
 func TestErrorFormatting(t *testing.T) {
 	t.Parallel()
 
@@ -53,56 +64,78 @@ func TestErrorFormatting(t *testing.T) {
 func TestNewContextDefaults(t *testing.T) {
 	t.Parallel()
 
-	// Default config (MaxDepth=0) initializes MaxDepth to 100.
+	// Default config (MaxDepth=0) should implicitly initialize MaxDepth to 100.
 	ctx := core.NewContext(core.Config{})
 
-	if ctx.Cfg.MaxDepth != 100 {
-		t.Errorf("Expected default MaxDepth 100, got %d", ctx.Cfg.MaxDepth)
+	if ctx.String() != "" {
+		t.Errorf("Expected root path to be empty, got %s", ctx.String())
 	}
-	if ctx.Path != "" {
-		t.Errorf("Expected root path to be empty, got %s", ctx.Path)
+
+	// Behavioral test: verify we can push exactly 100 times successfully.
+	for i := 0; i < 100; i++ {
+		if err := ctx.Push("level"); err != nil {
+			t.Fatalf("Unexpected recursion error at default depth %d: %v", i+1, err)
+		}
 	}
-	if ctx.Depth != 0 {
-		t.Errorf("Expected root depth to be 0, got %d", ctx.Depth)
+
+	// The 101st push should trigger the default hard stop.
+	err := ctx.Push("overflow")
+	if err == nil {
+		t.Fatal("Expected recursion error at depth 101, got nil")
+	}
+
+	re, ok := err.(*core.RecursionError)
+	if !ok || re.MaxDepth != 100 {
+		t.Errorf("Expected RecursionError with MaxDepth 100, got: %v", err)
 	}
 }
 
-func TestContextJoinPath(t *testing.T) {
+func TestContextPathing(t *testing.T) {
 	t.Parallel()
-
 	ctx := core.NewContext(core.Config{MaxDepth: 10})
 
-	if ctx.Path != "" {
-		t.Fatal("Setup failed: Path must be empty")
+	// Test Field Push
+	if err := ctx.Push("User"); err != nil {
+		t.Fatalf("failed to push 'User': %v", err)
+	}
+	if ctx.String() != "User" {
+		t.Errorf("expected User, got %s", ctx.String())
 	}
 
-	t.Run("FieldNotation", func(t *testing.T) {
-		ctx1, _ := ctx.Enter("User")
-		if ctx1.Path != "User" {
-			t.Errorf("Expected 'User', got '%s'", ctx1.Path)
-		}
+	// Test Nested Field
+	if err := ctx.Push("Address"); err != nil {
+		t.Fatalf("failed to push 'Address': %v", err)
+	}
+	if ctx.String() != "User.Address" {
+		t.Errorf("expected User.Address, got %s", ctx.String())
+	}
 
-		ctx2, _ := ctx1.Enter("Address")
-		if ctx2.Path != "User.Address" {
-			t.Errorf("Expected 'User.Address', got '%s'", ctx2.Path)
-		}
-	})
+	// Test Index Push
+	if err := ctx.PushIndex(0); err != nil {
+		t.Fatalf("failed to push index 0: %v", err)
+	}
+	if ctx.String() != "User.Address[0]" {
+		t.Errorf("expected User.Address[0], got %s", ctx.String())
+	}
 
-	t.Run("ArrayNotation", func(t *testing.T) {
-		ctx1, _ := ctx.Enter("Items")
+	ctx.Pop() // Remove [0]
+	ctx.Pop() // Remove Address
 
-		// Array index should append directly without a preceding dot.
-		ctx2, _ := ctx1.Enter("[0]")
-		if ctx2.Path != "Items[0]" {
-			t.Errorf("Expected 'Items[0]', got '%s'", ctx2.Path)
-		}
+	if ctx.String() != "User" {
+		t.Errorf("expected User after pops, got %s", ctx.String())
+	}
+}
 
-		// Field inside array should use dot notation.
-		ctx3, _ := ctx2.Enter("ID")
-		if ctx3.Path != "Items[0].ID" {
-			t.Errorf("Expected 'Items[0].ID', got '%s'", ctx3.Path)
-		}
-	})
+func TestContextRecursionLimit(t *testing.T) {
+	t.Parallel()
+	ctx := core.NewContext(core.Config{MaxDepth: 2})
+
+	pushPaths(t, ctx, "L1", "L2")
+
+	err := ctx.Push("L3") // Should exceed MaxDepth 2
+	if err == nil {
+		t.Fatal("expected recursion error, got nil")
+	}
 }
 
 func TestContextRecursionSafety(t *testing.T) {
@@ -131,13 +164,7 @@ func TestContextRecursionSafety(t *testing.T) {
 	ctx := core.NewContext(cfg)
 
 	// 1. Should succeed and proceed to depth 3 (WarningThreshold).
-	ctxL1, _ := ctx.Enter("L1")
-	ctxL2, _ := ctxL1.Enter("L2")
-	ctxL3, err := ctxL2.Enter("L3") // Warning fires here (Depth 3).
-
-	if err != nil {
-		t.Fatalf("Expected success at depth 3, got: %v", err)
-	}
+	pushPaths(t, ctx, "L1", "L2", "L3") // Warning fires at L3
 
 	// 2. Warning check: L3 is depth 3 (threshold).
 	if warningCount != 1 {
@@ -145,22 +172,20 @@ func TestContextRecursionSafety(t *testing.T) {
 	}
 
 	// 3. Should continue past warning up to max depth (L5).
-	ctxL4, _ := ctxL3.Enter("L4")
-	ctxL5, _ := ctxL4.Enter("L5") // Depth 5 (MaxDepth).
-
-	if ctxL5.Depth != maxDepth {
-		t.Errorf("Failed to reach max depth %d", maxDepth)
-	}
+	pushPaths(t, ctx, "L4", "L5")
 
 	// 4. Hard Stop check (L6).
-	_, err = ctxL5.Enter("L6") // Depth 6 (Exceeds MaxDepth).
-
-	if _, ok := err.(*core.RecursionError); !ok {
-		t.Errorf("Expected RecursionError at depth 6, got: %v", err)
+	err := ctx.Push("L6") // Depth 6 (Exceeds MaxDepth).
+	if err == nil {
+		t.Fatal("Expected RecursionError at depth 6, got nil")
 	}
 
 	// Verify error details.
-	if re, ok := err.(*core.RecursionError); ok && re.MaxDepth != maxDepth {
+	re, ok := err.(*core.RecursionError)
+	if !ok {
+		t.Fatalf("Expected *core.RecursionError, got %T", err)
+	}
+	if re.MaxDepth != maxDepth {
 		t.Errorf("RecursionError MaxDepth incorrect, got %d", re.MaxDepth)
 	}
 }
