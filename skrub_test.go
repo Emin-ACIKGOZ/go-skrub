@@ -22,37 +22,31 @@ type MockRule struct {
 // Verify MockRule implements core.Rule.
 var _ core.Rule = (*MockRule)(nil)
 
-// NewMockRule creates a MockRule that returns the specified error.
-// A nil error signifies successful validation.
-func NewMockRule(errToReturn error) *MockRule {
-	return &MockRule{
-		ValidateFn: func(_ *core.Context) error {
-			return errToReturn
-		},
-	}
-}
-
 // Validate executes the mock function and increments the call count.
 func (m *MockRule) Validate(ctx *core.Context) error {
 	m.CallCount++
-	return m.ValidateFn(ctx)
+	if m.ValidateFn != nil {
+		return m.ValidateFn(ctx)
+	}
+	return nil
 }
 
 // TestValidate_SuccessAndDefaultConfig verifies basic successful validation
-// and implicit use of the default core.Config.
+// and ensures every rule provided is actually executed.
 func TestValidate_SuccessAndDefaultConfig(t *testing.T) {
 	t.Parallel()
 
-	rule1 := NewMockRule(nil)
-	rule2 := NewMockRule(nil)
+	rule1 := &MockRule{}
+	rule2 := &MockRule{}
 
+	// Target struct is ignored by the engine but required by the signature.
 	err := skrub.Validate(struct{}{}, rule1, rule2)
 
 	if err != nil {
-		t.Fatalf("Validate failed unexpectedly on successful rules: %v", err)
+		t.Fatalf("Validate failed unexpectedly: %v", err)
 	}
 	if rule1.CallCount != 1 || rule2.CallCount != 1 {
-		t.Errorf("Expected both rules to be called once. Rule1: %d, Rule2: %d", rule1.CallCount, rule2.CallCount)
+		t.Errorf("Rules were not called exactly once. Rule1: %d, Rule2: %d", rule1.CallCount, rule2.CallCount)
 	}
 }
 
@@ -61,9 +55,9 @@ func TestValidate_SuccessAndDefaultConfig(t *testing.T) {
 func TestValidate_ErrorHandling(t *testing.T) {
 	t.Parallel()
 
-	rule1 := NewMockRule(nil)
-	rule2 := NewMockRule(ErrMockRuleFailed)
-	rule3 := NewMockRule(nil) // Should not be called
+	rule1 := &MockRule{}
+	rule2 := &MockRule{ValidateFn: func(_ *core.Context) error { return ErrMockRuleFailed }}
+	rule3 := &MockRule{} // Should not be called
 
 	err := skrub.Validate(struct{}{}, rule1, rule2, rule3)
 
@@ -71,71 +65,75 @@ func TestValidate_ErrorHandling(t *testing.T) {
 		t.Fatalf("Expected %v, got %v", ErrMockRuleFailed, err)
 	}
 
+	// Logic Validation: Prove that Rule 1 and 2 ran, but Rule 3 was skipped.
 	if rule1.CallCount != 1 || rule2.CallCount != 1 {
-		t.Errorf("Rule 1 and 2 must be called once. Rule1: %d, Rule2: %d", rule1.CallCount, rule2.CallCount)
+		t.Errorf("Pre-error rules failed to execute. R1: %d, R2: %d", rule1.CallCount, rule2.CallCount)
 	}
 	if rule3.CallCount != 0 {
-		t.Errorf("Rule 3 must NOT be called due to short-circuiting. Got %d", rule3.CallCount)
+		t.Errorf("Regression: Engine failed to short-circuit. Rule 3 called %d times", rule3.CallCount)
 	}
 }
 
 // TestValidateWithConfig_ConfigurationDelegation verifies that core.Config settings
-// (MaxDepth, WarningThreshold, OnWarning) are correctly delegated and enforced.
+// are correctly enforced and that the Mutable Stack provides correct path strings.
 func TestValidateWithConfig_ConfigurationDelegation(t *testing.T) {
 	t.Parallel()
 
 	const testMaxDepth = 5
 	var warningFired bool
 	var warningDepth int
+	var capturedPath string
 
 	// Rule that deliberately triggers the recursion warning and hard stop limits.
 	recursionTestRule := &MockRule{
 		ValidateFn: func(ctx *core.Context) error {
-			// Trigger a warning check at WarningThreshold (MaxDepth - 2 = 3)
-			ctxL1, _ := ctx.Enter("L1")
-			ctxL2, _ := ctxL1.Enter("L2")
-			ctxL3, _ := ctxL2.Enter("L3") // Depth 3: Should trigger warning
+			// Trigger a warning check at Threshold 3
+			_ = ctx.Push("L1")
+			_ = ctx.Push("L2")
+			_ = ctx.Push("L3") // Warning fires here
 
-			// Trigger a hard stop check at MaxDepth + 1 = 6
-			ctxL4, _ := ctxL3.Enter("L4")
-			ctxL5, _ := ctxL4.Enter("L5")
-			_, err := ctxL5.Enter("L6") // Depth 6: Should fail
-
-			return err
+			// Trigger a hard stop check at MaxDepth + 1
+			_ = ctx.Push("L4")
+			_ = ctx.Push("L5")
+			return ctx.Push("L6") // Depth 6: Hard stop
 		},
 	}
 
 	cfg := core.Config{
 		MaxDepth:         testMaxDepth,
-		WarningThreshold: testMaxDepth - 2,
-		OnWarning: func(_ string, depth int) { // path is unused
+		WarningThreshold: 3,
+		OnWarning: func(path string, depth int) {
 			warningFired = true
 			warningDepth = depth
+			capturedPath = path
 		},
 	}
 
 	err := skrub.ValidateWithConfig(nil, cfg, recursionTestRule)
 
-	// 1. Check for the Recursion hard stop error
+	// 1. Verify Hard Stop logic
 	re, ok := err.(*core.RecursionError)
 	if !ok {
 		t.Fatalf("Expected *core.RecursionError, got %v", err)
 	}
 	if re.MaxDepth != testMaxDepth {
-		t.Errorf("RecursionError reported incorrect MaxDepth. Got %d, want %d", re.MaxDepth, testMaxDepth)
+		t.Errorf("RecursionError reported incorrect MaxDepth: %d", re.MaxDepth)
 	}
 
-	// 2. Check the warning callback execution
+	// 2. Verify Warning Logic and Path Integrity
 	if !warningFired {
-		t.Error("OnWarning callback was not fired.")
+		t.Error("OnWarning callback was never fired.")
 	}
-	if warningDepth != testMaxDepth-2 {
-		t.Errorf("OnWarning fired at incorrect depth. Got %d, want %d", warningDepth, testMaxDepth-2)
+	if warningDepth != 3 {
+		t.Errorf("OnWarning fired at depth %d, want 3", warningDepth)
+	}
+	// This proves the Mutable Stack produces correct paths during validation tree traversal.
+	if capturedPath != "L1.L2.L3" {
+		t.Errorf("Warning path integrity failure. Got %q, want %q", capturedPath, "L1.L2.L3")
 	}
 }
 
-// TestValidateWithConfig_TargetIgnored ensures that the target parameter,
-// regardless of its type (nil, pointer, value), is correctly handled by ValidateWithConfig.
+// TestValidateWithConfig_TargetIgnored ensures the root Validate call is target-agnostic.
 func TestValidateWithConfig_TargetIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -150,18 +148,13 @@ func TestValidateWithConfig_TargetIgnored(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Create a fresh rule for every parallel sub-test.
-			rule := NewMockRule(nil)
-
+			rule := &MockRule{}
 			err := skrub.ValidateWithConfig(tt.target, core.Config{}, rule)
-
 			if err != nil {
-				t.Fatalf("Validation failed for target %s: %v", tt.name, err)
+				t.Fatalf("Validation failed for %s: %v", tt.name, err)
 			}
 			if rule.CallCount != 1 {
-				t.Errorf("Rule was not called exactly once.")
+				t.Error("Rule was not called.")
 			}
 		})
 	}

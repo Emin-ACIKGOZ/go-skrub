@@ -3,6 +3,7 @@
 package adapters_test
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
@@ -57,7 +58,9 @@ func TestTimeAdapterIntegration(t *testing.T) {
 		adapter := adapters.TimeWithLayout(testTime, layout)
 
 		// Rule: String must start with the weekday abbreviation (Mon).
-		rule := skrub.String(adapter, "date").Pattern(`^Mon`)
+		// Pass pre-compiled *regexp.Regexp
+		re := regexp.MustCompile(`^Mon`)
+		rule := skrub.String(adapter, "date").Pattern(re)
 
 		if err := rule.Validate(nil); err != nil {
 			t.Fatalf("Expected validation success, got error: %v", err)
@@ -71,11 +74,14 @@ func TestTimeAdapterIntegration(t *testing.T) {
 		adapter := adapters.TimeWithLayout(testTime, layout)
 
 		// Rule: String must start with "Sun" (it starts with Mon).
-		rule := skrub.String(adapter, "date").Pattern(`^Sun`)
+		// Pass pre-compiled *regexp.Regexp
+		re := regexp.MustCompile(`^Sun`)
+		rule := skrub.String(adapter, "date").Pattern(re)
 
 		err := rule.Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "value does not match required pattern" {
+		// skrub.String defaults to setting the ReasonPattern in chains/string.go
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonPattern {
 			t.Fatalf("Expected pattern failure, got: %v", err)
 		}
 	})
