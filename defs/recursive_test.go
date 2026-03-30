@@ -12,8 +12,6 @@ import (
 func TestNewMatrixDef(t *testing.T) {
 	t.Parallel()
 
-	defaultCtx := core.NewContext(core.Config{})
-
 	// Define the innermost rule.
 	innerIntRule := defs.NewIntDef().Min(0)
 
@@ -27,25 +25,30 @@ func TestNewMatrixDef(t *testing.T) {
 		}
 	})
 
-	t.Run("OneDimensionReturnsSingleSliceDef", func(t *testing.T) {
+	t.Run("OneDimensionPathing", func(t *testing.T) {
 		t.Parallel()
-		// Should return DefSlice().Elements(innerIntRule).
+		// Fix: Initialize a local context for each parallel subtest.
+		// Sharing a Context across goroutines causes data races on the internal stack.
+		ctx := core.NewContext(core.Config{})
+
 		template := defs.NewMatrixDef(1, innerIntRule)
 
 		// Target: []int.
 		data := []int{-1} // Should fail Min(0).
 		rule := template.Bind(&data, "vector")
 
-		err := rule.Validate(defaultCtx)
+		err := rule.Validate(ctx)
 		expectedPath := "vector[0]"
 
 		if fe, ok := err.(*core.FieldError); !ok || fe.Path != expectedPath {
-			t.Fatalf("Expected failure at '%s', got: %v", expectedPath, err)
+			t.Fatalf("Expected path %q, got: %v", expectedPath, err)
 		}
 	})
 
 	t.Run("ThreeDimensionsRecursiveValidation", func(t *testing.T) {
 		t.Parallel()
+		// Fix: Initialize a local context for each parallel subtest.
+		ctx := core.NewContext(core.Config{})
 
 		// Should recursively nest three SliceDefs.
 		matrixTemplate := defs.NewMatrixDef(3, innerIntRule)
@@ -54,20 +57,17 @@ func TestNewMatrixDef(t *testing.T) {
 		matrix := [][][]int{
 			{
 				{100},
-				{-5}, // Fails Min(0).
+				{-5}, // Fails at [0][1][0]
 			},
 		}
 
-		// Bind to the pointer of the data slice.
-		var matrixPtr any = &matrix
-		rule := matrixTemplate.Bind(matrixPtr, "matrix")
-
-		err := rule.Validate(defaultCtx)
+		rule := matrixTemplate.Bind(&matrix, "matrix")
+		err := rule.Validate(ctx)
 
 		expectedPath := "matrix[0][1][0]"
 
 		if fe, ok := err.(*core.FieldError); !ok || fe.Path != expectedPath {
-			t.Fatalf("Expected deep path '%s', got: %s (Reason: %s)", expectedPath, fe.Path, fe.Reason)
+			t.Fatalf("Expected deep path %q, got: %v", expectedPath, err)
 		}
 	})
 }

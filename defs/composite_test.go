@@ -40,7 +40,7 @@ func TestSliceDefBinding(t *testing.T) {
 		rule := sliceTemplate.Bind(&data, "emails")
 		err := rule.Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "slice length exceeds maximum" {
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMaxLength {
 			t.Fatalf("Expected MaxLen failure, got: %v", err)
 		}
 	})
@@ -54,8 +54,8 @@ func TestSliceDefBinding(t *testing.T) {
 
 		// Expected error path: emails[1]
 		expectedPath := "emails[1]"
-		if fe, ok := err.(*core.FieldError); !ok || fe.Path != expectedPath || fe.Reason != "invalid email format" {
-			t.Fatalf("Expected failure at '%s' with 'invalid email format', got: %v", expectedPath, err)
+		if fe, ok := err.(*core.FieldError); !ok || fe.Path != expectedPath || fe.Reason != core.ReasonInvalidEmail {
+			t.Fatalf("Expected failure at '%s' with invalid email format, got: %v", expectedPath, err)
 		}
 	})
 }

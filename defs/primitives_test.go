@@ -28,7 +28,7 @@ func TestStringDefBinding(t *testing.T) {
 		// Validate (should fail on Min(10)).
 		err := rule.Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "length is less than required minimum" {
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMinLength {
 			t.Fatalf("Expected Min length failure, got: %v", err)
 		}
 
@@ -58,7 +58,7 @@ func TestStringDefBinding(t *testing.T) {
 		// Test failure.
 		rule = uuidTemplate.Bind(&invalidID, "id")
 		// The rule's Validate() must be called once and its result checked.
-		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != "invalid UUID format" {
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonInvalidUUID {
 			t.Errorf("Expected UUID format failure, got: %v", rule.Validate(nil))
 		}
 	})
@@ -82,7 +82,7 @@ func TestIntDefBinding(t *testing.T) {
 		// Validate.
 		err := rule.Validate(nil)
 
-		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "value is less than minimum" {
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMinValue {
 			t.Fatalf("Expected Min value failure, got: %v", err)
 		}
 

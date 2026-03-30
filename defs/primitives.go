@@ -3,76 +3,96 @@
 package defs
 
 import (
+	"regexp"
+	"sync"
+
 	"github.com/Emin-ACIKGOZ/go-skrub/chains"
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
 // StringDef is an unbound template for string validation.
-// It stores configuration modifiers to be applied when the template is bound to a target.
+// It uses closure factories to build the rule graph once and share it across all bound instances.
 type StringDef struct {
+	mu        sync.Mutex
 	modifiers []func(*chains.StringChain)
 }
 
-// NewStringDef creates and returns a new unbound string validation template.
+// NewStringDef creates a new unbound string template.
 func NewStringDef() *StringDef {
 	return &StringDef{
 		modifiers: make([]func(*chains.StringChain), 0),
 	}
 }
 
-// Bind creates a stateful, bound StringChain for the specific target value and
-// applies all queued validation rules (modifiers) to the chain.
-// Bind returns the resulting core.Rule ready for execution via Validate.
+// Bind creates a lightweight StringChain bound to the target.
+// It applies all pre-configured modifiers to the new chain instance.
 func (d *StringDef) Bind(target any, name string) core.Rule {
-	chain := chains.NewStringChain(target, name)
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
 
-	for _, mod := range d.modifiers {
+	chain := chains.NewStringChain(target, name)
+	for _, mod := range modifiers {
 		mod(chain)
 	}
-
 	return chain
 }
 
-// Min queues a minimum character length (rune count) check to the template.
-// The minimum allowed length is validationMin.
-func (d *StringDef) Min(validationMin int) *StringDef {
+// Min enforces a minimum character length.
+func (d *StringDef) Min(vMin int) *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
-		c.Min(validationMin)
+		c.Min(vMin)
 	})
 	return d
 }
 
-// Max queues a maximum character length (rune count) check to the template.
-// The maximum allowed length is validationMax.
-func (d *StringDef) Max(validationMax int) *StringDef {
+// Max enforces a maximum character length.
+func (d *StringDef) Max(vMax int) *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
-		c.Max(validationMax)
+		c.Max(vMax)
 	})
 	return d
 }
 
-// Email queues an email format check to the template.
-// The check uses a basic structural regex.
+// Email enforces email format validation.
 func (d *StringDef) Email() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
 		c.Email()
 	})
 	return d
 }
 
-// UUID queues a standard UUID format check (8-4-4-4-12 hex string) to the template.
+// UUID enforces standard UUID format validation.
 func (d *StringDef) UUID() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
 		c.UUID()
 	})
 	return d
 }
 
-// Pattern queues a regular expression check to the template.
-// The string must match the provided pattern.
+// Pattern enforces a regex match. The regex is compiled during the Definition Phase,
+// preventing recompilation during the Execution Phase.
 func (d *StringDef) Pattern(pattern string) *StringDef {
+	// Pre-compile regex at definition time to ensure high performance during validation.
+	re := regexp.MustCompile(pattern)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
-		c.Pattern(pattern)
+		c.Pattern(re)
 	})
 	return d
 }
@@ -80,43 +100,48 @@ func (d *StringDef) Pattern(pattern string) *StringDef {
 // IntDef is an unbound template for integer validation.
 // It stores configuration modifiers to be applied when the template is bound to a target.
 type IntDef struct {
+	mu        sync.Mutex
 	modifiers []func(*chains.IntChain)
 }
 
-// NewIntDef creates and returns a new unbound integer validation template.
+// NewIntDef creates a new unbound integer template.
 func NewIntDef() *IntDef {
 	return &IntDef{
 		modifiers: make([]func(*chains.IntChain), 0),
 	}
 }
 
-// Bind creates a stateful, bound IntChain for the specific target value and
-// applies all queued validation rules (modifiers) to the chain.
-// Bind returns the resulting core.Rule ready for execution via Validate.
+// Bind creates a lightweight IntChain bound to the target.
 func (d *IntDef) Bind(target any, name string) core.Rule {
-	chain := chains.NewIntChain(target, name)
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
 
-	for _, mod := range d.modifiers {
+	chain := chains.NewIntChain(target, name)
+	for _, mod := range modifiers {
 		mod(chain)
 	}
-
 	return chain
 }
 
-// Min queues a minimum value check to the template.
-// The integer must be greater than or equal to validationMin.
-func (d *IntDef) Min(validationMin int) *IntDef {
+// Min enforces a minimum value.
+func (d *IntDef) Min(vMin int) *IntDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
-		c.Min(validationMin)
+		c.Min(vMin)
 	})
 	return d
 }
 
-// Max queues a maximum value check to the template.
-// The integer must be less than or equal to validationMax.
-func (d *IntDef) Max(validationMax int) *IntDef {
+// Max enforces a maximum value.
+func (d *IntDef) Max(vMax int) *IntDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
-		c.Max(validationMax)
+		c.Max(vMax)
 	})
 	return d
 }
