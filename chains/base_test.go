@@ -140,3 +140,41 @@ func TestBaseChain_ResetSafety(t *testing.T) {
 		chain.Release()
 	}
 }
+
+func TestBaseChain_AnonymousPathFormatting(t *testing.T) {
+	t.Parallel()
+	ctx := core.NewContext(core.Config{})
+	_ = ctx.Push("Items")
+	_ = ctx.PushIndex(5)
+
+	// Chain with empty Name (typical for slice elements).
+	chain := &MockChain{chains.BaseChain{Name: ""}}
+
+	err := chain.Fail(ctx, "val", "reason")
+	fe := err.(*core.FieldError)
+
+	// Logic Check: Ensure no trailing or double dots.
+	expected := "Items[5]"
+	if fe.Path != expected {
+		t.Errorf("Path integrity failure. Got %q, want %q", fe.Path, expected)
+	}
+}
+
+func TestBaseChain_LockResiliencyAfterPanic(t *testing.T) {
+	t.Parallel()
+	chain := &MockChain{chains.BaseChain{Name: "resilient_field"}}
+
+	// Simulate a panic during validation.
+	func() {
+		defer func() { _ = recover() }()
+		_ = chain.Acquire()
+		panic("simulated failure")
+	}()
+
+	// Reset should be able to recover the "bricked" chain for pooling.
+	chain.Reset()
+
+	if err := chain.Acquire(); err != nil {
+		t.Errorf("Regression: Chain remained locked after panic and Reset: %v", err)
+	}
+}
