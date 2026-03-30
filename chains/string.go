@@ -12,11 +12,11 @@ import (
 // Package-level variables for globally compiled regular expressions.
 // This prevents expensive recompilation on every execution of Email() or UUID().
 var (
-	// emailRegex provides a generally useful, non-RFC-compliant pattern for basic email format validation.
-	emailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+	// EmailRegex provides a generally useful, non-RFC-compliant pattern for basic email format validation.
+	EmailRegex = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-	// uuidRegex enforces the standard 8-4-4-4-12 hexadecimal string UUID format (version 1-5), case-insensitive.
-	uuidRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
+	// UUIDRegex enforces the standard 8-4-4-4-12 hexadecimal string UUID format (version 1-5), case-insensitive.
+	UUIDRegex = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
 )
 
 // StringChain is a bound validator for string values.
@@ -25,12 +25,10 @@ var (
 type StringChain struct {
 	BaseChain
 	target     any
-	validators []func(value string) error
+	validators []func(string) error
 }
 
 // NewStringChain initializes a new StringChain for the given target and validation name.
-// The target must be a *string or a core.Valuer that yields a string; otherwise,
-// Validate returns core.ErrMisuse upon execution.
 func NewStringChain(target any, name string) *StringChain {
 	return &StringChain{
 		BaseChain: BaseChain{Name: name},
@@ -38,63 +36,19 @@ func NewStringChain(target any, name string) *StringChain {
 	}
 }
 
-// Validate executes the configured length and pattern validators against the bound string value.
-//
-// It returns nil immediately if the bound target is a nil *string pointer.
-// It returns core.ErrMisuse if the target is not a supported string type (*string or core.Valuer).
-func (c *StringChain) Validate(ctx *core.Context) error {
-	if err := c.Acquire(); err != nil {
-		return err
-	}
-	defer c.Release()
-
-	var val string
-	var isNil bool
-
-	switch t := c.target.(type) {
-	case *string:
-		if t == nil {
-			isNil = true
-		} else {
-			val = *t
-		}
-	case core.Valuer:
-		unwrapped := t.Unwrap()
-		if s, ok := unwrapped.(string); ok {
-			val = s
-		} else {
-			return core.ErrMisuse
-		}
-	default:
-		return core.ErrMisuse
-	}
-
-	if isNil {
-		return nil
-	}
-
-	for _, fn := range c.validators {
-		if err := fn(val); err != nil {
-			return c.Fail(ctx, val, err.Error())
-		}
-	}
-
-	return nil
+// SetTarget updates the validation target, allowing the chain to be reused via Flyweight.
+func (c *StringChain) SetTarget(target any) {
+	c.target = target
 }
 
-// Reset clears the StringChain's state, returning it to the state of a freshly
-// initialized chain for object pooling reuse.
-func (c *StringChain) Reset() {
-	c.BaseChain.Reset()
-	c.target = nil
-	c.validators = nil
-}
+// --- Ad-hoc Builders ---
 
-// Min enforces a minimum character length (rune count) for the string.
-// The minimum allowed length is validationMin.
-func (c *StringChain) Min(validationMin int) *StringChain {
+// Min enforces a minimum rune length constraint on the string value.
+// If the string contains fewer than vMin runes, validation fails
+// with core.ReasonMinLength.
+func (c *StringChain) Min(vMin int) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
-		if utf8.RuneCountInString(v) < validationMin {
+		if utf8.RuneCountInString(v) < vMin {
 			return core.NewFieldError("", v, core.ReasonMinLength)
 		}
 		return nil
@@ -102,11 +56,12 @@ func (c *StringChain) Min(validationMin int) *StringChain {
 	return c
 }
 
-// Max enforces a maximum character length (rune count) for the string.
-// The maximum allowed length is validationMax.
-func (c *StringChain) Max(validationMax int) *StringChain {
+// Max enforces a maximum rune length constraint on the string value.
+// If the string contains more than vMax runes, validation fails
+// with core.ReasonMaxLength.
+func (c *StringChain) Max(vMax int) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
-		if utf8.RuneCountInString(v) > validationMax {
+		if utf8.RuneCountInString(v) > vMax {
 			return core.NewFieldError("", v, core.ReasonMaxLength)
 		}
 		return nil
@@ -114,13 +69,34 @@ func (c *StringChain) Max(validationMax int) *StringChain {
 	return c
 }
 
+// Email validates that the string matches a basic email format.
+// It uses a precompiled regular expression and returns
+// core.ReasonInvalidEmail on failure.
+func (c *StringChain) Email() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if !EmailRegex.MatchString(v) {
+			return core.NewFieldError("", v, core.ReasonInvalidEmail)
+		}
+		return nil
+	})
+	return c
+}
+
+// UUID validates that the string matches the canonical 8-4-4-4-12
+// hexadecimal UUID format. On mismatch, it returns
+// core.ReasonInvalidUUID.
+func (c *StringChain) UUID() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if !UUIDRegex.MatchString(v) {
+			return core.NewFieldError("", v, core.ReasonInvalidUUID)
+		}
+		return nil
+	})
+	return c
+}
+
 // Pattern enforces that the string must match the provided regular expression.
-// NOTE: The pattern is compiled *during* the call to Pattern; this is a CPU bottleneck.
-// For optimal performance in critical loops, use a globally defined regex and integrate
-// it with a custom validator via the Register feature, or ensure the chain definition
-// (template) is only built once.
-func (c *StringChain) Pattern(pattern string) *StringChain {
-	re := regexp.MustCompile(pattern)
+func (c *StringChain) Pattern(re *regexp.Regexp) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
 		if !re.MatchString(v) {
 			return core.NewFieldError("", v, core.ReasonPattern)
@@ -130,27 +106,51 @@ func (c *StringChain) Pattern(pattern string) *StringChain {
 	return c
 }
 
-// Email enforces a basic email format using a standard regex.
-// It checks for the general structure: text@text.text using a globally compiled pattern.
-func (c *StringChain) Email() *StringChain {
-	// Uses the globally compiled emailRegex defined at package level (Perf P1.3).
-	c.validators = append(c.validators, func(v string) error {
-		if !emailRegex.MatchString(v) {
-			return core.NewFieldError("", v, core.ReasonInvalidEmail)
+// Validate executes all registered validators against the bound target.
+// It returns the first encountered validation error or nil if validation succeeds.
+// Concurrency violations and misuse are returned as explicit errors.
+func (c *StringChain) Validate(ctx *core.Context) error {
+	if err := c.Acquire(); err != nil {
+		return err
+	}
+	defer c.Release()
+
+	val, isNil, err := c.resolveTarget()
+	if err != nil || isNil {
+		return err
+	}
+
+	for _, fn := range c.validators {
+		if err := fn(val); err != nil {
+			return c.Fail(ctx, val, err.Error())
 		}
-		return nil
-	})
-	return c
+	}
+	return nil
 }
 
-// UUID enforces the standard UUID format.
-// It uses a globally compiled pattern for performance.
-func (c *StringChain) UUID() *StringChain {
-	c.validators = append(c.validators, func(v string) error {
-		if !uuidRegex.MatchString(v) {
-			return core.NewFieldError("", v, core.ReasonInvalidUUID)
+func (c *StringChain) resolveTarget() (string, bool, error) {
+	switch t := c.target.(type) {
+	case *string:
+		if t == nil {
+			return "", true, nil
 		}
-		return nil
-	})
-	return c
+		return *t, false, nil
+	case core.Valuer:
+		unwrapped := t.Unwrap()
+		if s, ok := unwrapped.(string); ok {
+			return s, false, nil
+		}
+		return "", false, core.ErrMisuse
+	default:
+		return "", false, core.ErrMisuse
+	}
+}
+
+// Reset clears the chain state, including its target and rules,
+// allowing the instance to be safely reused by the pool.
+func (c *StringChain) Reset() {
+	c.BaseChain.Reset()
+	c.target = nil
+	// Clearing slice while keeping capacity reduces future allocations.
+	c.validators = c.validators[:0]
 }

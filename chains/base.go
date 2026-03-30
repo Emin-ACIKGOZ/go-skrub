@@ -7,6 +7,7 @@
 package chains
 
 import (
+	"strings"
 	"sync/atomic"
 
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
@@ -58,14 +59,21 @@ func (b *BaseChain) Fail(ctx *core.Context, value any, reason string) error {
 	path := b.Name
 
 	// Check if the context exists and has a non-empty path.
-	if ctx != nil && ctx.Path != "" {
-		if b.Name != "" {
-			// Case 1: Both context path and chain name are present (e.g., "user.age").
-			path = ctx.Path + "." + b.Name
-		} else {
-			// Case 2: Context path is present, but chain name is empty.
-			// The current chain represents a rule on the value pointed to by ctx.Path.
-			path = ctx.Path
+	if ctx != nil {
+		// Generate the full path string on demand
+		ctxPath := ctx.String()
+		if ctxPath != "" {
+			if b.Name != "" {
+				// Both context path and chain name are present (e.g., "user.age").
+				if strings.HasPrefix(b.Name, "[") {
+					path = ctxPath + b.Name
+				} else {
+					path = ctxPath + "." + b.Name
+				}
+			} else {
+				// Context path is present, but chain name is empty.
+				path = ctxPath
+			}
 		}
 	}
 

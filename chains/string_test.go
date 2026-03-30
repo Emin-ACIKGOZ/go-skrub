@@ -3,6 +3,7 @@
 package chains_test
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/Emin-ACIKGOZ/go-skrub/chains"
@@ -58,7 +59,9 @@ func TestStringChainValidation(t *testing.T) {
 		t.Parallel()
 		val := "AB-123"
 		chain := chains.NewStringChain(&val, "code")
-		err := chain.Pattern(`^[A-Z]{2}-\d{3}$`).Validate(nil)
+
+		re := regexp.MustCompile(`^[A-Z]{2}-\d{3}$`)
+		err := chain.Pattern(re).Validate(nil)
 
 		if err != nil {
 			t.Errorf("Expected pattern success, got: %v", err)

@@ -4,7 +4,6 @@ package chains
 
 import (
 	"reflect"
-	"strconv"
 
 	safeReflect "github.com/Emin-ACIKGOZ/go-skrub/internal/skrubreflect"
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
@@ -12,13 +11,16 @@ import (
 
 // SliceChain is a reflection-based, bound validator for slice types.
 // It iterates over elements using reflection and supports recursive validation
-// through nested Templates applied to each element.
+// through nested Templates applied to each element using the Flyweight pattern.
 type SliceChain struct {
 	BaseChain
-	target any
-
-	sliceValidators  []func(v reflect.Value) error
+	target           any
+	validators       []func(reflect.Value) error
 	elementTemplates []core.Template
+
+	// Caches to prevent allocations during recursive execution.
+	flyweights  []core.Rule
+	rebindables []core.Rebindable
 }
 
 // NewSliceChain initializes a new SliceChain for the given target slice and validation name.
@@ -31,16 +33,10 @@ func NewSliceChain(target any, name string) *SliceChain {
 }
 
 // Validate executes all length validators on the bound slice and recursively validates
-// each element using the configured element templates.
-//
-// If the bound target is a nil pointer or a nil interface, Validate returns nil
-// immediately, skipping all further validation.
-// Validate returns core.ErrMisuse if the target value is not a slice after
-// resolving all pointers and interfaces.
+// each element. It utilizes the mutable context stack to avoid allocations during traversal.
 func (c *SliceChain) Validate(ctx *core.Context) error {
-	// Ensure a non-nil context is used for pathing and configuration, even if the user
-	// did not provide one (e.g., if Validate is called directly).
-	// Moving this check here prevents accidental state resets deeper in the call stack.
+	// Ensure a non-nil context is used for pathing and configuration.
+	// In the mutable stack model, the same context instance is passed through the tree.
 	if ctx == nil {
 		ctx = core.NewContext(core.Config{})
 	}
@@ -50,41 +46,63 @@ func (c *SliceChain) Validate(ctx *core.Context) error {
 	}
 	defer c.Release()
 
-	val := reflect.ValueOf(c.target)
-
-	// Reliably unwrap pointers/interfaces and handle untyped nil.
-	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
-		if val.IsNil() {
-			return nil // Allow nil pointers/interfaces to skip validation.
-		}
-		val = val.Elem()
+	val, isNil, err := c.resolveTarget()
+	if err != nil || isNil {
+		return err
 	}
 
-	// Handle reflect.Invalid kind, which can occur if the resolved element is a nil slice.
-	if val.Kind() == reflect.Invalid {
-		return nil
-	}
-
-	if val.Kind() != reflect.Slice {
-		// Target was not a slice when bound, indicating misuse of the chain.
-		return core.ErrMisuse
-	}
-
-	// Execute slice-level validators (e.g., MinLen, MaxLen).
-	for _, fn := range c.sliceValidators {
+	// 1. Execute slice-level validators BEFORE pushing name to stack.
+	for _, fn := range c.validators {
 		if err := fn(val); err != nil {
 			return c.Fail(ctx, val.Interface(), err.Error())
 		}
 	}
 
+	// 2. Push Name to stack ONLY if we are proceeding to elements.
+	if c.Name != "" {
+		if err := ctx.Push(c.Name); err != nil {
+			return err
+		}
+		// Register Pop immediately after successful Push to guarantee symmetry.
+		defer ctx.Pop()
+	}
+
 	return c.validateElements(ctx, val)
 }
 
+// resolveTarget unwraps pointers and interfaces to find the underlying slice.
+func (c *SliceChain) resolveTarget() (reflect.Value, bool, error) {
+	val := reflect.ValueOf(c.target)
+
+	// Reliably unwrap pointers/interfaces and handle untyped nil.
+	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+		if val.IsNil() {
+			return reflect.Value{}, true, nil // Allow nil pointers/interfaces to skip validation.
+		}
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Slice {
+		// Target was not a slice when bound, indicating misuse of the chain.
+		return reflect.Value{}, false, core.ErrMisuse
+	}
+
+	return val, false, nil
+}
+
 // validateElements iterates through slice items and applies recursive templates.
-// Returns nil if no element templates are configured or if the slice is empty.
+// It uses Flyweight rule instances and rebinds them to each element to eliminate allocation churn.
 func (c *SliceChain) validateElements(ctx *core.Context, val reflect.Value) error {
-	if len(c.elementTemplates) == 0 {
+	tmplCount := len(c.elementTemplates)
+	if tmplCount == 0 {
 		return nil
+	}
+
+	// Initialize Flyweight caches ONCE per bound chain lifecycle.
+	// This eliminates all array allocations during hot-path execution.
+	if len(c.flyweights) != tmplCount {
+		c.flyweights = make([]core.Rule, tmplCount)
+		c.rebindables = make([]core.Rebindable, tmplCount)
 	}
 
 	count := val.Len()
@@ -95,7 +113,15 @@ func (c *SliceChain) validateElements(ctx *core.Context, val reflect.Value) erro
 			continue
 		}
 
-		if err := c.validateElement(ctx, elementValue, i); err != nil {
+		// 3. Zero-allocation PushIndex.
+		if err := ctx.PushIndex(i); err != nil {
+			return err
+		}
+
+		err := c.executeElementRules(ctx, elementValue)
+		ctx.Pop()
+
+		if err != nil {
 			return err
 		}
 	}
@@ -103,77 +129,62 @@ func (c *SliceChain) validateElements(ctx *core.Context, val reflect.Value) erro
 	return nil
 }
 
-// shouldSkipElement checks if the given element value represents a nil pointer
-// or an invalid resolved target that should not be validated recursively.
-func (c *SliceChain) shouldSkipElement(elementValue reflect.Value) bool {
-	// Skip validation if the element is a nil pointer (e.g., *string in [](*string)).
-	if elementValue.Kind() == reflect.Ptr && elementValue.IsNil() {
-		return true
-	}
-
-	// Resolve the value to its underlying concrete type.
-	// If the resolved value is invalid (e.g., a nil interface after Elem()), skip it.
-	bindTargetValue := reflect.ValueOf(safeReflect.ResolveValue(elementValue))
-	return !bindTargetValue.IsValid()
-}
-
-// validateElement handles context creation, binding, and validation for a single slice item.
-func (c *SliceChain) validateElement(ctx *core.Context, elementValue reflect.Value, index int) error {
-	indexStr := "[" + strconv.Itoa(index) + "]"
-
-	// Check for recursion depth error from createChildContext.
-	childCtx, err := c.createChildContext(ctx, indexStr)
-	if err != nil {
-		// Stop recursion immediately if depth limit is exceeded.
-		return err
-	}
-
-	// The target for binding is the resolved interface value, ensuring Templates
-	// operate on the concrete type, not the container (e.g., an interface or pointer).
+// executeElementRules handles the flyweight binding and execution for a single element.
+func (c *SliceChain) executeElementRules(ctx *core.Context, elementValue reflect.Value) error {
 	bindTarget := safeReflect.ResolveValue(elementValue)
 
-	for _, tmpl := range c.elementTemplates {
-		// The inner rule is bound to the element, not the chain target.
-		rule := tmpl.Bind(bindTarget, "")
-		if err := rule.Validate(childCtx); err != nil {
+	for j, tmpl := range c.elementTemplates {
+		if c.flyweights[j] == nil {
+			// First iteration ever: Initialize the Flyweight.
+			c.flyweights[j] = tmpl.Bind(bindTarget, "")
+			if rb, ok := c.flyweights[j].(core.Rebindable); ok {
+				c.rebindables[j] = rb
+			}
+		} else if c.rebindables[j] != nil {
+			// Subsequent iterations: Reuse the instance via SetTarget (Zero Allocations).
+			c.rebindables[j].SetTarget(bindTarget)
+		} else {
+			// Fallback if rule doesn't support Rebindable.
+			c.flyweights[j] = tmpl.Bind(bindTarget, "")
+		}
+
+		if err := c.flyweights[j].Validate(ctx); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// createChildContext handles the logic for path resolution and context depth checking.
-// It ensures that array index paths (e.g., [0]) are correctly nested within the
-// parent chain's path.
-func (c *SliceChain) createChildContext(ctx *core.Context, indexStr string) (*core.Context, error) {
-	// If the parent context path is empty and the chain has a name, initialize the path.
-	// This ensures a correct root path like "MySlice[0]" instead of "[0]".
-	if ctx.Path == "" && c.Name != "" {
-		effectiveCtx := core.NewContext(ctx.Cfg)
-		effectiveCtx.Path = c.Name
-		ctx = effectiveCtx
+func (c *SliceChain) shouldSkipElement(v reflect.Value) bool {
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		return true
 	}
-
-	// Use the effective context to enter the index path.
-	// Return the error (RecursionError) if MaxDepth is exceeded.
-	return ctx.Enter(indexStr)
+	return !reflect.ValueOf(safeReflect.ResolveValue(v)).IsValid()
 }
 
-// Reset clears the SliceChain's state, returning it to the state of a freshly
-// initialized chain for object pooling reuse.
+// SetTarget updates the validation target, allowing the chain to be reused.
+func (c *SliceChain) SetTarget(target any) {
+	c.target = target
+}
+
+// Reset clears the SliceChain's state for object pooling reuse.
 func (c *SliceChain) Reset() {
 	c.BaseChain.Reset()
 	c.target = nil
-	c.sliceValidators = nil
-	c.elementTemplates = nil
+	// Clearing slice while keeping capacity reduces future allocations.
+	c.validators = c.validators[:0]
+	c.elementTemplates = c.elementTemplates[:0]
+
+	// Wipe caches on reset so pooled chains don't leak memory or carry stale targets.
+	c.flyweights = nil
+	c.rebindables = nil
 }
 
 // MinLen enforces a minimum number of elements in the slice.
-// If the slice length is less than validationMin, validation fails.
-func (c *SliceChain) MinLen(validationMin int) *SliceChain {
-	c.sliceValidators = append(c.sliceValidators, func(v reflect.Value) error {
-		if v.Len() < validationMin {
-			return core.NewFieldError("", v.Len(), "slice length is less than minimum")
+func (c *SliceChain) MinLen(vMin int) *SliceChain {
+	c.validators = append(c.validators, func(v reflect.Value) error {
+		if v.Len() < vMin {
+			return core.NewFieldError("", v.Interface(), core.ReasonMinLength)
 		}
 		return nil
 	})
@@ -181,11 +192,10 @@ func (c *SliceChain) MinLen(validationMin int) *SliceChain {
 }
 
 // MaxLen enforces a maximum number of elements in the slice.
-// If the slice length exceeds validationMax, validation fails.
-func (c *SliceChain) MaxLen(validationMax int) *SliceChain {
-	c.sliceValidators = append(c.sliceValidators, func(v reflect.Value) error {
-		if v.Len() > validationMax {
-			return core.NewFieldError("", v.Len(), "slice length exceeds maximum")
+func (c *SliceChain) MaxLen(vMax int) *SliceChain {
+	c.validators = append(c.validators, func(v reflect.Value) error {
+		if v.Len() > vMax {
+			return core.NewFieldError("", v.Interface(), core.ReasonMaxLength)
 		}
 		return nil
 	})
@@ -193,8 +203,6 @@ func (c *SliceChain) MaxLen(validationMax int) *SliceChain {
 }
 
 // Elements applies the provided Templates to every item in the bound slice.
-// This enables recursive validation of complex or nested structures within the slice.
-// Validation on an element is skipped if the element is a nil pointer or resolves to nil.
 func (c *SliceChain) Elements(templates ...core.Template) *SliceChain {
 	c.elementTemplates = append(c.elementTemplates, templates...)
 	return c
