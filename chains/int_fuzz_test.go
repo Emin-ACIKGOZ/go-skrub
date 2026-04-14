@@ -4,6 +4,7 @@ package chains_test
 
 import (
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/Emin-ACIKGOZ/go-skrub/chains"
@@ -41,7 +42,7 @@ func FuzzIntChainMatchString(f *testing.F) {
 		validateErr := intChain.Validate(core.NewContext(core.Config{}))
 
 		// Verify result matches regex.MatchString behavior on string representation
-		intStr := string(rune(value))
+		intStr := strconv.Itoa(value)
 		if re.MatchString(intStr) && validateErr != nil {
 			t.Logf("WARNING: Validator rejected %d with pattern %q but regex matches its string representation", value, pattern)
 		}

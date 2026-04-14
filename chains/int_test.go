@@ -123,7 +123,6 @@ func TestIntChainNotZero(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.value
@@ -195,7 +194,6 @@ func TestIntChainMatchString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			re := regexp.MustCompile(tt.pattern)

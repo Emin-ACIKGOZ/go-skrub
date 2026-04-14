@@ -9,6 +9,8 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
+const itemValue = "item"
+
 // FuzzSliceChainNotEmpty tests NotEmpty validator against arbitrary slice inputs.
 // Verifies that:
 // - Validator never panics with any slice size
@@ -32,7 +34,7 @@ func FuzzSliceChainNotEmpty(f *testing.F) {
 		// Test with string slices
 		stringSlice := make([]string, size)
 		for i := 0; i < size; i++ {
-			stringSlice[i] = "item"
+			stringSlice[i] = itemValue
 		}
 
 		chain := chains.NewSliceChain(&stringSlice, "items")
@@ -73,7 +75,7 @@ func FuzzSliceChainMinLen(f *testing.F) {
 		// Test with string slices
 		stringSlice := make([]string, size)
 		for i := 0; i < size; i++ {
-			stringSlice[i] = "item"
+			stringSlice[i] = itemValue
 		}
 
 		chain := chains.NewSliceChain(&stringSlice, "items")
@@ -114,7 +116,7 @@ func FuzzSliceChainMaxLen(f *testing.F) {
 		// Test with string slices
 		stringSlice := make([]string, size)
 		for i := 0; i < size; i++ {
-			stringSlice[i] = "item"
+			stringSlice[i] = itemValue
 		}
 
 		chain := chains.NewSliceChain(&stringSlice, "items")

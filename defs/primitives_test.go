@@ -9,7 +9,7 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
-func TestStringDefBinding(t *testing.T) {
+func TestStringDefBinding(t *testing.T) { //nolint:cyclop
 	t.Parallel()
 
 	// Define the unbound template with multiple modifiers.

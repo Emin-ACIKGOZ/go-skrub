@@ -21,15 +21,15 @@ func TestStringValidator_URLNotEmpty(t *testing.T) {
 	}
 
 	// Should fail on NotEmpty: empty string
-	emptyUrl := ""
-	chain = chains.NewStringChain(&emptyUrl, "url").URL().NotEmpty()
+	emptyURL := ""
+	chain = chains.NewStringChain(&emptyURL, "url").URL().NotEmpty()
 	if err := chain.Validate(nil); err == nil {
 		t.Error("Expected empty string to fail NotEmpty check")
 	}
 
 	// Should fail on URL: invalid scheme
-	badUrl := "not-a-url"
-	chain = chains.NewStringChain(&badUrl, "url").URL().NotEmpty()
+	badURL := "not-a-url"
+	chain = chains.NewStringChain(&badURL, "url").URL().NotEmpty()
 	if err := chain.Validate(nil); err == nil {
 		t.Error("Expected invalid URL to fail URL validation")
 	}
@@ -47,8 +47,8 @@ func TestStringValidator_URLMin(t *testing.T) {
 	}
 
 	// Should fail on Min: URL too short
-	shortUrl := "http://a.co" // 11 chars, min 20
-	chain = chains.NewStringChain(&shortUrl, "url").URL().Min(20)
+	shortURL := "http://a.co" // 11 chars, min 20
+	chain = chains.NewStringChain(&shortURL, "url").URL().Min(20)
 	if err := chain.Validate(nil); err == nil {
 		t.Error("Expected short URL to fail Min constraint")
 	}
@@ -73,8 +73,8 @@ func TestStringValidator_IPNotEmpty(t *testing.T) {
 	}
 
 	// Should fail on NotEmpty: empty string
-	emptyIp := ""
-	chain = chains.NewStringChain(&emptyIp, "ip").IP().NotEmpty()
+	emptyIP := ""
+	chain = chains.NewStringChain(&emptyIP, "ip").IP().NotEmpty()
 	if err := chain.Validate(nil); err == nil {
 		t.Error("Expected empty string to fail NotEmpty check")
 	}
@@ -335,9 +335,10 @@ func TestSliceValidator_AllCombinations(t *testing.T) {
 	}
 
 	// Slice too large: should fail MaxLen
+	const itemValue = "item"
 	largeItems := make([]string, 15)
 	for i := 0; i < 15; i++ {
-		largeItems[i] = "item"
+		largeItems[i] = itemValue
 	}
 	chain = chains.NewSliceChain(&largeItems, "items").
 		NotEmpty().

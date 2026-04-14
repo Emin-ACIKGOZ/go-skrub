@@ -159,7 +159,6 @@ func TestStringChainURL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // Capture loop variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.url
@@ -248,7 +247,6 @@ func TestStringChainIP(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.ip
@@ -287,7 +285,6 @@ func TestStringChainIPv4(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.ip
@@ -321,7 +318,6 @@ func TestStringChainIPv6(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.ip
@@ -362,7 +358,6 @@ func TestStringChainNotEmpty(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			val := tt.value
