@@ -241,12 +241,12 @@ func TestSliceChainNotEmptyWithOtherValidators(t *testing.T) {
 
 	t.Run("NotEmpty_With_Elements", func(t *testing.T) {
 		t.Parallel()
-		tags := []string{"valid"}
+		tags := []string{"ok"}
 		template := skrub.DefString().Min(3)
 		chain := chains.NewSliceChain(&tags, "tags").NotEmpty().Elements(template)
 		err := chain.Validate(nil)
 		if err == nil {
-			t.Error("Expected element validation failure, got nil")
+			t.Error("Expected element validation failure (string too short), got nil")
 		}
 	})
 }
