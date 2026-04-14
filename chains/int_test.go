@@ -242,3 +242,35 @@ func TestIntChainMatchStringWithOtherValidators(t *testing.T) {
 		}
 	})
 }
+
+func TestIntChainMatchStringNil(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MatchStringNilRegex", func(t *testing.T) {
+		t.Parallel()
+		val := 42
+		chain := chains.NewIntChain(&val, "field")
+		chain.MatchString(nil) // Pass nil regex
+		err := chain.Validate(nil)
+
+		if err == nil {
+			t.Error("Expected MatchString(nil) to fail, got nil error")
+		}
+		if fe, ok := err.(*core.FieldError); ok && fe.Reason != core.ReasonPattern {
+			t.Errorf("Expected reason %q, got %q", core.ReasonPattern, fe.Reason)
+		}
+	})
+
+	t.Run("MatchStringNilRegexAlwaysFails", func(t *testing.T) {
+		t.Parallel()
+		testValues := []int{0, 1, -42, 999, 2147483647}
+		for _, val := range testValues {
+			chain := chains.NewIntChain(&val, "field")
+			chain.MatchString(nil)
+			err := chain.Validate(nil)
+			if err == nil {
+				t.Errorf("MatchString(nil) should fail for %d, got nil", val)
+			}
+		}
+	})
+}

@@ -69,6 +69,38 @@ func TestStringChainValidation(t *testing.T) {
 	})
 }
 
+func TestStringChainPatternNil(t *testing.T) {
+	t.Parallel()
+
+	t.Run("PatternNilRegex", func(t *testing.T) {
+		t.Parallel()
+		val := "test"
+		chain := chains.NewStringChain(&val, "field")
+		chain.Pattern(nil) // Pass nil regex
+		err := chain.Validate(nil)
+
+		if err == nil {
+			t.Error("Expected Pattern(nil) to fail, got nil error")
+		}
+		if fe, ok := err.(*core.FieldError); ok && fe.Reason != core.ReasonPattern {
+			t.Errorf("Expected reason %q, got %q", core.ReasonPattern, fe.Reason)
+		}
+	})
+
+	t.Run("PatternNilRegexAlwaysFails", func(t *testing.T) {
+		t.Parallel()
+		testValues := []string{"", "a", "xyz", "123"}
+		for _, val := range testValues {
+			chain := chains.NewStringChain(&val, "field")
+			chain.Pattern(nil)
+			err := chain.Validate(nil)
+			if err == nil {
+				t.Errorf("Pattern(nil) should fail for %q, got nil", val)
+			}
+		}
+	})
+}
+
 func TestStringChainValuer(t *testing.T) {
 	t.Parallel()
 

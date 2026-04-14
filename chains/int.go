@@ -115,8 +115,12 @@ func (c *IntChain) NotZero() *IntChain {
 }
 
 // MatchString validates that the string representation of the integer matches a regex pattern.
+// If re is nil, validation always fails with core.ReasonPattern.
 func (c *IntChain) MatchString(re *regexp.Regexp) *IntChain {
 	c.validators = append(c.validators, func(v int) error {
+		if re == nil {
+			return core.NewFieldError("", v, core.ReasonPattern)
+		}
 		str := strconv.Itoa(v)
 		if !re.MatchString(str) {
 			return core.NewFieldError("", v, core.ReasonPattern)

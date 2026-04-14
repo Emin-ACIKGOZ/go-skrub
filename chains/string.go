@@ -98,9 +98,10 @@ func (c *StringChain) UUID() *StringChain {
 }
 
 // Pattern enforces that the string must match the provided regular expression.
+// If re is nil, validation always fails with core.ReasonPattern.
 func (c *StringChain) Pattern(re *regexp.Regexp) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
-		if !re.MatchString(v) {
+		if re == nil || !re.MatchString(v) {
 			return core.NewFieldError("", v, core.ReasonPattern)
 		}
 		return nil
