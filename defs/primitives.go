@@ -97,6 +97,18 @@ func (d *StringDef) Pattern(pattern string) *StringDef {
 	return d
 }
 
+// URL enforces HTTP(S) URL format validation.
+// Validates that the string is a well-formed URL with http:// or https:// scheme.
+func (d *StringDef) URL() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.URL()
+	})
+	return d
+}
+
 // IntDef is an unbound template for integer validation.
 // It stores configuration modifiers to be applied when the template is bound to a target.
 type IntDef struct {

@@ -3,6 +3,7 @@
 package chains
 
 import (
+	"net/url"
 	"regexp"
 	"unicode/utf8"
 
@@ -101,6 +102,31 @@ func (c *StringChain) Pattern(re *regexp.Regexp) *StringChain {
 		if !re.MatchString(v) {
 			return core.NewFieldError("", v, core.ReasonPattern)
 		}
+		return nil
+	})
+	return c
+}
+
+// URL validates that the string is a valid HTTP(S) URL.
+// It accepts absolute URLs with http:// or https:// schemes.
+func (c *StringChain) URL() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		// Parse the URL to ensure it's well-formed
+		parsed, err := url.Parse(v)
+		if err != nil {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
+		// Require http or https scheme
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
+		// Require a host
+		if parsed.Host == "" {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
 		return nil
 	})
 	return c

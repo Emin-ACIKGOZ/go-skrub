@@ -62,6 +62,50 @@ func TestStringDefBinding(t *testing.T) {
 			t.Errorf("Expected UUID format failure, got: %v", rule.Validate(nil))
 		}
 	})
+
+	t.Run("BindingAppliesURL", func(t *testing.T) {
+		t.Parallel()
+
+		urlTemplate := defs.NewStringDef().URL()
+
+		validURL := "https://api.example.com/v1/users"
+		invalidURL := "not-a-url"
+
+		// Test success.
+		rule := urlTemplate.Bind(&validURL, "webhook_url")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected URL success, got: %v", err)
+		}
+
+		// Test failure.
+		rule = urlTemplate.Bind(&invalidURL, "webhook_url")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonInvalidURL {
+			t.Errorf("Expected URL format failure, got: %v", rule.Validate(nil))
+		}
+	})
+
+	t.Run("BindingComposesURLWithMin", func(t *testing.T) {
+		t.Parallel()
+
+		// Compose URL with Min length constraint
+		urlTemplate := defs.NewStringDef().Min(15).URL()
+
+		shortURL := "http://a.co" // Length 12, fails Min(15)
+		longURL := "https://example.com/path"
+
+		// Test failure on Min.
+		rule := urlTemplate.Bind(&shortURL, "url")
+		err := rule.Validate(nil)
+		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != core.ReasonMinLength {
+			t.Errorf("Expected Min length failure, got: %v", err)
+		}
+
+		// Test success.
+		rule = urlTemplate.Bind(&longURL, "url")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected composed URL validation to succeed, got: %v", err)
+		}
+	})
 }
 
 func TestIntDefBinding(t *testing.T) {

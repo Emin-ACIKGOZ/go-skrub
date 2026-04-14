@@ -83,3 +83,96 @@ func TestStringChainValuer(t *testing.T) {
 		}
 	})
 }
+
+func TestStringChainURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		url       string
+		expectErr bool
+		reason    string
+	}{
+		// Valid HTTP(S) URLs
+		{"ValidHTTP", "http://example.com", false, ""},
+		{"ValidHTTPS", "https://example.com", false, ""},
+		{"HTTPSWithPath", "https://example.com/path", false, ""},
+		{"HTTPSWithQuery", "https://example.com?key=value", false, ""},
+		{"HTTPSWithPort", "https://example.com:8080", false, ""},
+		{"HTTPSWithAuth", "https://user:pass@example.com", false, ""},
+		{"HTTPSWithFragment", "https://example.com#section", false, ""},
+		{"SimpleHTTP", "http://a.co", false, ""},
+		{"LocalhostHTTP", "http://localhost", false, ""},
+		{"LocalhostWithPort", "http://localhost:3000", false, ""},
+		{"IPv4URL", "http://192.168.1.1", false, ""},
+		{"IPv4WithPort", "http://192.168.1.1:8080", false, ""},
+		{"ComplexPath", "https://api.example.com/v1/users/123", false, ""},
+		{"MultipleQueryParams", "https://example.com?a=1&b=2&c=3", false, ""},
+		{"HTTPWithPath", "http://example.com/some/path/here", false, ""},
+		{"HTTPWithComplexQuery", "https://example.com/search?q=test&filter=active", false, ""},
+		{"SubdomainURL", "https://api.v2.example.co.uk", false, ""},
+		{"DeepPath", "https://example.com/a/b/c/d/e/f", false, ""},
+		{"QueryWithSpecialChars", "https://example.com?encoded=%20space", false, ""},
+
+		// Invalid URLs
+		{"EmptyString", "", true, core.ReasonInvalidURL},
+		{"NoScheme", "example.com", true, core.ReasonInvalidURL},
+		{"WrongScheme", "ftp://example.com", true, core.ReasonInvalidURL},
+		{"WrongSchemeHTTPS", "ftps://example.com", true, core.ReasonInvalidURL},
+		{"NoHost", "http://", true, core.ReasonInvalidURL},
+		{"OnlyScheme", "https://", true, core.ReasonInvalidURL},
+		{"MalformedURL", "ht!tp://example.com", true, core.ReasonInvalidURL},
+		{"SpaceInURL", "http://exam ple.com", true, core.ReasonInvalidURL},
+		{"InvalidCharacters", "http://exam<>ple.com", true, core.ReasonInvalidURL},
+		{"RelativePath", "/path/to/resource", true, core.ReasonInvalidURL},
+		{"ProtocolRelative", "//example.com", true, core.ReasonInvalidURL},
+		{"SchemeLowercase", "http://example.com", false, ""}, // lowercase ok
+	}
+
+	for _, tt := range tests {
+		tt := tt // Capture loop variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.url
+			chain := chains.NewStringChain(&val, "url")
+			err := chain.URL().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("URL %q: expected error=%v, got error=%v", tt.url, tt.expectErr, err)
+				return
+			}
+
+			if tt.expectErr && err != nil {
+				if fe, ok := err.(*core.FieldError); !ok || fe.Reason != tt.reason {
+					t.Errorf("URL %q: expected reason %q, got %q", tt.url, tt.reason, fe.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestStringChainURLWithValuer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("URLViaValuer_Success", func(t *testing.T) {
+		t.Parallel()
+		valuer := MockStringValuer{Value: "https://api.example.com/v1"}
+		chain := chains.NewStringChain(valuer, "webhook_url")
+		err := chain.URL().Validate(nil)
+
+		if err != nil {
+			t.Errorf("Expected URL validation via Valuer to succeed, got: %v", err)
+		}
+	})
+
+	t.Run("URLViaValuer_Failure", func(t *testing.T) {
+		t.Parallel()
+		valuer := MockStringValuer{Value: "not-a-url"}
+		chain := chains.NewStringChain(valuer, "webhook_url")
+		err := chain.URL().Validate(nil)
+
+		if err == nil {
+			t.Error("Expected URL validation via Valuer to fail, got nil")
+		}
+	})
+}

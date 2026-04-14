@@ -3,6 +3,7 @@
 package skrub_test
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/Emin-ACIKGOZ/go-skrub"
@@ -112,6 +113,88 @@ func BenchmarkSkrub_DeepMatrix_Optimized(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ctx := core.NewContext(cfg)
 		if err := boundMatrix.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// --- TIER 3: INDIVIDUAL VALIDATORS ---
+
+// Benchmark URL validator in isolation
+func BenchmarkSkrub_Validator_URL(b *testing.B) {
+	url := "https://api.example.com/v1/users"
+	chain := skrub.String(&url, "webhook_url").URL()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark URL validator from Def (template reuse)
+func BenchmarkSkrub_Validator_URLDef(b *testing.B) {
+	urlTemplate := defs.NewStringDef().URL()
+	url := "https://api.example.com/v1/users"
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		chain := urlTemplate.Bind(&url, "webhook_url")
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark URL validator with invalid input (worst case)
+func BenchmarkSkrub_Validator_URL_InvalidInput(b *testing.B) {
+	url := "not-a-url-at-all"
+	chain := skrub.String(&url, "webhook_url").URL()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		_ = chain.Validate(ctx) // Expect error, ignore it
+	}
+}
+
+// Benchmark Email for comparison with URL
+func BenchmarkSkrub_Validator_Email(b *testing.B) {
+	email := "user@example.com"
+	chain := skrub.String(&email, "email").Email()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark multiple validators combined (URL + Min length + Pattern)
+func BenchmarkSkrub_Validators_Combined(b *testing.B) {
+	url := "https://example.com/webhook"
+	pattern := regexp.MustCompile(`^https://`)
+	chain := skrub.String(&url, "webhook_url").URL().Min(15).Pattern(pattern)
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}
