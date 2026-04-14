@@ -101,9 +101,9 @@ func FuzzStringChainIPv6(f *testing.F) {
 	f.Add("::")
 	f.Add("2001:db8::1")
 	f.Add("fe80::1")
-	f.Add("::ffff:192.0.2.1")           // IPv4-mapped standard
-	f.Add("::ffff:127.0.0.1")           // IPv4-mapped loopback
-	f.Add("::ffff:0:0")                 // IPv4-mapped all zeros
+	f.Add("::ffff:192.0.2.1") // IPv4-mapped standard
+	f.Add("::ffff:127.0.0.1") // IPv4-mapped loopback
+	f.Add("::ffff:0:0")       // IPv4-mapped all zeros
 	f.Add("not-an-ipv6")
 	f.Add("")
 	f.Add("192.168.1.1")

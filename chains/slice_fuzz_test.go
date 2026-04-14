@@ -17,10 +17,10 @@ import (
 // - Various element types are handled correctly
 func FuzzSliceChainNotEmpty(f *testing.F) {
 	// Seed with known test cases
-	f.Add(0)   // Empty slice
-	f.Add(1)   // Single element
-	f.Add(10)  // Multiple elements
-	f.Add(100) // Large slice
+	f.Add(0)    // Empty slice
+	f.Add(1)    // Single element
+	f.Add(10)   // Multiple elements
+	f.Add(100)  // Large slice
 	f.Add(1000) // Very large slice
 
 	f.Fuzz(func(t *testing.T, size int) {

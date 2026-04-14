@@ -59,8 +59,8 @@ func FuzzIntChainMin(f *testing.F) {
 	f.Add(10, 5)
 	f.Add(5, 10)
 	f.Add(-1, 0)
-	f.Add(9223372036854775807, 0)       // Max int64
-	f.Add(-9223372036854775808, -1000)  // Min int64
+	f.Add(9223372036854775807, 0)      // Max int64
+	f.Add(-9223372036854775808, -1000) // Min int64
 
 	f.Fuzz(func(t *testing.T, value int, minVal int) {
 		val := value
