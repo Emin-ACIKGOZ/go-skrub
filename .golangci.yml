@@ -1,7 +1,5 @@
 # .golangci.yml - Standardized Go Linter Configuration
-# golangci-lint v2.11.4 compatible
-
-version: 2.0
+# golangci-lint v1.64.8+ compatible
 
 run:
   # Default timeout for linter
