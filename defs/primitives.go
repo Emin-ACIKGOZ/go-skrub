@@ -212,3 +212,18 @@ func (d *IntDef) NotZero() *IntDef {
 	})
 	return d
 }
+
+// MatchString enforces that the string representation of the integer matches a regex pattern.
+// The pattern is compiled during the Definition Phase for optimal performance.
+func (d *IntDef) MatchString(pattern string) *IntDef {
+	// Pre-compile regex at definition time to ensure high performance during validation.
+	re := regexp.MustCompile(pattern)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
+		c.MatchString(re)
+	})
+	return d
+}
