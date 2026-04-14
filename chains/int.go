@@ -99,3 +99,14 @@ func (c *IntChain) Max(validationMax int) *IntChain {
 	})
 	return c
 }
+
+// NotZero validates that the integer is not zero.
+func (c *IntChain) NotZero() *IntChain {
+	c.validators = append(c.validators, func(v int) error {
+		if v == 0 {
+			return core.NewFieldError("", v, core.ReasonRequired)
+		}
+		return nil
+	})
+	return c
+}

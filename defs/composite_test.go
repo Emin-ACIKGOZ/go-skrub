@@ -58,4 +58,24 @@ func TestSliceDefBinding(t *testing.T) {
 			t.Fatalf("Expected failure at '%s' with invalid email format, got: %v", expectedPath, err)
 		}
 	})
+
+	t.Run("NotEmptyTest", func(t *testing.T) {
+		t.Parallel()
+
+		notEmptyTemplate := defs.NewSliceDef().NotEmpty()
+
+		// Test success with non-empty slice.
+		data := []string{"item"}
+		rule := notEmptyTemplate.Bind(&data, "items")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected NotEmpty success, got: %v", err)
+		}
+
+		// Test failure with empty slice.
+		emptyData := []string{}
+		rule = notEmptyTemplate.Bind(&emptyData, "items")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonRequired {
+			t.Errorf("Expected NotEmpty failure, got: %v", rule.Validate(nil))
+		}
+	})
 }

@@ -99,3 +99,70 @@ func TestIntChain_MisuseGuard(t *testing.T) {
 		t.Errorf("Regression: IntChain failed to catch type misuse. Got %v", err)
 	}
 }
+
+func TestIntChainNotZero(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		value     int
+		expectErr bool
+		reason    string
+	}{
+		// Valid non-zero integers
+		{"Positive1", 1, false, ""},
+		{"Positive100", 100, false, ""},
+		{"PositiveMax", 9223372036854775807, false, ""},
+		{"Negative1", -1, false, ""},
+		{"NegativeMin", -9223372036854775808, false, ""},
+		{"NegativeHundred", -100, false, ""},
+
+		// Invalid zero
+		{"Zero", 0, true, core.ReasonRequired},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.value
+			chain := chains.NewIntChain(&val, "count")
+			err := chain.NotZero().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("NotZero %d: expected error=%v, got error=%v", tt.value, tt.expectErr, err)
+				return
+			}
+
+			if tt.expectErr && err != nil {
+				if fe, ok := err.(*core.FieldError); !ok || fe.Reason != tt.reason {
+					t.Errorf("NotZero %d: expected reason %q, got %q", tt.value, tt.reason, fe.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestIntChainNotZeroWithOtherValidators(t *testing.T) {
+	t.Parallel()
+
+	t.Run("NotZero_Then_Min", func(t *testing.T) {
+		t.Parallel()
+		val := -5
+		chain := chains.NewIntChain(&val, "score").NotZero().Min(0)
+		err := chain.Validate(nil)
+		if err == nil {
+			t.Error("Expected Min failure, got nil")
+		}
+	})
+
+	t.Run("NotZero_Success_With_Max", func(t *testing.T) {
+		t.Parallel()
+		val := 50
+		chain := chains.NewIntChain(&val, "percentage").NotZero().Max(100)
+		err := chain.Validate(nil)
+		if err != nil {
+			t.Errorf("Expected success, got: %v", err)
+		}
+	})
+}

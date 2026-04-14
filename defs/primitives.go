@@ -142,6 +142,17 @@ func (d *StringDef) IPv6() *StringDef {
 	return d
 }
 
+// NotEmpty enforces that the string is not empty.
+func (d *StringDef) NotEmpty() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.NotEmpty()
+	})
+	return d
+}
+
 // IntDef is an unbound template for integer validation.
 // It stores configuration modifiers to be applied when the template is bound to a target.
 type IntDef struct {
@@ -187,6 +198,17 @@ func (d *IntDef) Max(vMax int) *IntDef {
 
 	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
 		c.Max(vMax)
+	})
+	return d
+}
+
+// NotZero enforces that the integer is not zero.
+func (d *IntDef) NotZero() *IntDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
+		c.NotZero()
 	})
 	return d
 }

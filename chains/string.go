@@ -169,6 +169,17 @@ func (c *StringChain) IPv6() *StringChain {
 	return c
 }
 
+// NotEmpty validates that the string is not empty.
+func (c *StringChain) NotEmpty() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if v == "" {
+			return core.NewFieldError("", v, core.ReasonRequired)
+		}
+		return nil
+	})
+	return c
+}
+
 // Validate executes all registered validators against the bound target.
 // It returns the first encountered validation error or nil if validation succeeds.
 // Concurrency violations and misuse are returned as explicit errors.

@@ -273,3 +273,79 @@ func BenchmarkSkrub_Validators_Network_Combined(b *testing.B) {
 		}
 	}
 }
+
+// Benchmark NotEmpty validator for strings
+func BenchmarkSkrub_Validator_NotEmpty_String(b *testing.B) {
+	str := "non-empty"
+	chain := skrub.String(&str, "name").NotEmpty()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark NotZero validator for integers
+func BenchmarkSkrub_Validator_NotZero(b *testing.B) {
+	num := 42
+	template := defs.NewIntDef().NotZero()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		chain := template.Bind(&num, "count")
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark NotEmpty validator for slices
+func BenchmarkSkrub_Validator_NotEmpty_Slice(b *testing.B) {
+	items := []string{"item"}
+	chain := skrub.Slice(&items, "items").NotEmpty()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark all required validators combined (NotEmpty String + NotZero Int + NotEmpty Slice)
+func BenchmarkSkrub_Validators_Required_Combined(b *testing.B) {
+	str := "value"
+	strChain := skrub.String(&str, "name").NotEmpty()
+	num := 1
+	numTemplate := defs.NewIntDef().NotZero()
+	items := []string{"item"}
+	sliceChain := skrub.Slice(&items, "items").NotEmpty()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := strChain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		numChain := numTemplate.Bind(&num, "count")
+		if err := numChain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		if err := sliceChain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

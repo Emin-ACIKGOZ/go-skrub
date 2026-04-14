@@ -148,6 +148,27 @@ func TestStringDefBinding(t *testing.T) {
 			t.Errorf("Expected IPv6 format failure, got: %v", rule.Validate(nil))
 		}
 	})
+
+	t.Run("BindingAppliesNotEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		emptyTemplate := defs.NewStringDef().NotEmpty()
+
+		validStr := "non-empty"
+		emptyStr := ""
+
+		// Test success.
+		rule := emptyTemplate.Bind(&validStr, "name")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected NotEmpty success, got: %v", err)
+		}
+
+		// Test failure on empty.
+		rule = emptyTemplate.Bind(&emptyStr, "name")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonRequired {
+			t.Errorf("Expected NotEmpty failure, got: %v", rule.Validate(nil))
+		}
+	})
 }
 
 func TestIntDefBinding(t *testing.T) {
@@ -178,6 +199,27 @@ func TestIntDefBinding(t *testing.T) {
 		err = rule.Validate(nil)
 		if err != nil {
 			t.Fatalf("Expected success, got: %v", err)
+		}
+	})
+
+	t.Run("BindingAppliesNotZero", func(t *testing.T) {
+		t.Parallel()
+
+		zeroTemplate := defs.NewIntDef().NotZero()
+
+		validInt := 42
+		zeroInt := 0
+
+		// Test success.
+		rule := zeroTemplate.Bind(&validInt, "count")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected NotZero success, got: %v", err)
+		}
+
+		// Test failure on zero.
+		rule = zeroTemplate.Bind(&zeroInt, "count")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonRequired {
+			t.Errorf("Expected NotZero failure, got: %v", rule.Validate(nil))
 		}
 	})
 }

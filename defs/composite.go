@@ -74,6 +74,17 @@ func (d *SliceDef) MaxLen(vMax int) *SliceDef {
 	return d
 }
 
+// NotEmpty enforces that the slice is not empty.
+func (d *SliceDef) NotEmpty() *SliceDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.SliceChain) {
+		c.NotEmpty()
+	})
+	return d
+}
+
 // Elements registers recursive validation templates for slice items.
 // These templates are stored in the definition and passed to every new chain during Bind.
 func (d *SliceDef) Elements(templates ...core.Template) *SliceDef {

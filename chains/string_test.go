@@ -300,3 +300,85 @@ func TestStringChainIPv6(t *testing.T) {
 		})
 	}
 }
+
+func TestStringChainNotEmpty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		value     string
+		expectErr bool
+		reason    string
+	}{
+		// Valid non-empty strings
+		{"SingleChar", "a", false, ""},
+		{"ShortString", "test", false, ""},
+		{"LongString", "this is a longer string", false, ""},
+		{"Spaces", "   ", false, ""}, // Spaces are not empty
+		{"SingleSpace", " ", false, ""},
+		{"Tab", "\t", false, ""},
+		{"Newline", "\n", false, ""},
+		{"Special", "!@#$%^&*()", false, ""},
+		{"Emoji", "😀", false, ""},
+		{"MultiUnicode", "你好世界", false, ""},
+		{"Mixed", "abc 123 !@#", false, ""},
+
+		// Invalid empty strings
+		{"Empty", "", true, core.ReasonRequired},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.value
+			chain := chains.NewStringChain(&val, "name")
+			err := chain.NotEmpty().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("NotEmpty %q: expected error=%v, got error=%v", tt.value, tt.expectErr, err)
+				return
+			}
+
+			if tt.expectErr && err != nil {
+				if fe, ok := err.(*core.FieldError); !ok || fe.Reason != tt.reason {
+					t.Errorf("NotEmpty %q: expected reason %q, got %q", tt.value, tt.reason, fe.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestStringChainNotEmptyWithOtherValidators(t *testing.T) {
+	t.Parallel()
+
+	t.Run("NotEmpty_Then_Min", func(t *testing.T) {
+		t.Parallel()
+		val := "a"
+		chain := chains.NewStringChain(&val, "username").NotEmpty().Min(3)
+		err := chain.Validate(nil)
+		if err == nil {
+			t.Error("Expected Min length failure, got nil")
+		}
+	})
+
+	t.Run("NotEmpty_Then_Email", func(t *testing.T) {
+		t.Parallel()
+		val := "a"
+		chain := chains.NewStringChain(&val, "email").NotEmpty().Email()
+		err := chain.Validate(nil)
+		if err == nil {
+			t.Error("Expected Email failure, got nil")
+		}
+	})
+
+	t.Run("NotEmpty_Success_With_Email", func(t *testing.T) {
+		t.Parallel()
+		val := "test@example.com"
+		chain := chains.NewStringChain(&val, "email").NotEmpty().Email()
+		err := chain.Validate(nil)
+		if err != nil {
+			t.Errorf("Expected success, got: %v", err)
+		}
+	})
+}
