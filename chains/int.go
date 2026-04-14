@@ -3,6 +3,9 @@
 package chains
 
 import (
+	"regexp"
+	"strconv"
+
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
@@ -94,6 +97,33 @@ func (c *IntChain) Max(validationMax int) *IntChain {
 	c.validators = append(c.validators, func(v int) error {
 		if v > validationMax {
 			return core.NewFieldError("", v, core.ReasonMaxValue)
+		}
+		return nil
+	})
+	return c
+}
+
+// NotZero validates that the integer is not zero.
+func (c *IntChain) NotZero() *IntChain {
+	c.validators = append(c.validators, func(v int) error {
+		if v == 0 {
+			return core.NewFieldError("", v, core.ReasonRequired)
+		}
+		return nil
+	})
+	return c
+}
+
+// MatchString validates that the string representation of the integer matches a regex pattern.
+// If re is nil, validation always fails with core.ReasonPattern.
+func (c *IntChain) MatchString(re *regexp.Regexp) *IntChain {
+	c.validators = append(c.validators, func(v int) error {
+		if re == nil {
+			return core.NewFieldError("", v, core.ReasonPattern)
+		}
+		str := strconv.Itoa(v)
+		if !re.MatchString(str) {
+			return core.NewFieldError("", v, core.ReasonPattern)
 		}
 		return nil
 	})

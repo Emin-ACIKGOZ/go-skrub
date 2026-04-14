@@ -202,6 +202,17 @@ func (c *SliceChain) MaxLen(vMax int) *SliceChain {
 	return c
 }
 
+// NotEmpty validates that the slice is not empty.
+func (c *SliceChain) NotEmpty() *SliceChain {
+	c.validators = append(c.validators, func(v reflect.Value) error {
+		if v.Len() == 0 {
+			return core.NewFieldError("", v.Interface(), core.ReasonRequired)
+		}
+		return nil
+	})
+	return c
+}
+
 // Elements applies the provided Templates to every item in the bound slice.
 func (c *SliceChain) Elements(templates ...core.Template) *SliceChain {
 	c.elementTemplates = append(c.elementTemplates, templates...)

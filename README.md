@@ -51,6 +51,54 @@ err := skrub.Validate(
 )
 ```
 
+## Validators
+
+### String Validators
+
+* **`URL()`**: Validates HTTP/HTTPS URLs with valid scheme and host.
+  ```go
+  skrub.String(&webhook, "url").URL()
+  ```
+
+* **`IP()`**, **`IPv4()`**, **`IPv6()`**: Validate IP addresses.
+  ```go
+  skrub.String(&addr, "ipv4").IPv4()
+  skrub.String(&addr, "ipv6").IPv6()
+  skrub.String(&addr, "ip").IP()  // Accepts both
+  ```
+
+* **`NotEmpty()`**: Rejects empty strings.
+  ```go
+  skrub.String(&name, "name").NotEmpty()
+  ```
+
+* **`Email()`**, **`UUID()`**, **`Pattern()`**, **`Min()`**, **`Max()`**: Standard string validators.
+
+### Integer Validators
+
+* **`NotZero()`**: Rejects zero values.
+  ```go
+  skrub.DefInt().NotZero().Bind(&count, "count")
+  ```
+
+* **`MatchString(regexp)`**: Validates string representation against a regex.
+  ```go
+  pattern := regexp.MustCompile(`^[1-9]\d{2}$`)
+  skrub.DefInt().MatchString(pattern).Bind(&id, "id")
+  ```
+
+* **`Min()`**, **`Max()`**: Boundary validation.
+
+### Slice Validators
+
+* **`NotEmpty()`**: Rejects empty slices.
+  ```go
+  skrub.Slice(&items, "items").NotEmpty()
+  ```
+
+* **`MinLen()`**, **`MaxLen()`**: Length constraints.
+* **`Elements(def)`**: Validate each element recursively.
+
 ## Facade API
 
 The `skrub` package re-exports core types and provides helpers:

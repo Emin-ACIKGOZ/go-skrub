@@ -173,3 +173,79 @@ func TestSliceChain_HeterogeneousRebinding(t *testing.T) {
 		t.Errorf("Expected path 'mixed[1]', got %q", fe.Path)
 	}
 }
+
+func TestSliceChainNotEmpty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		slice     interface{}
+		expectErr bool
+		reason    string
+	}{
+		// Valid non-empty slices
+		{"SingleElement", []string{"a"}, false, ""},
+		{"MultiElement", []int{1, 2, 3}, false, ""},
+		{"LongSlice", []string{"a", "b", "c", "d", "e"}, false, ""},
+		{"PointerSlice", []*int{ptrInt(1), ptrInt(2)}, false, ""},
+
+		// Invalid empty slices
+		{"EmptySlice", []string{}, true, core.ReasonRequired},
+		{"EmptyIntSlice", []int{}, true, core.ReasonRequired},
+		{"EmptyPointerSlice", []*int{}, true, core.ReasonRequired},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			chain := chains.NewSliceChain(&tt.slice, "items")
+			err := chain.NotEmpty().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("NotEmpty: expected error=%v, got error=%v", tt.expectErr, err)
+				return
+			}
+
+			if tt.expectErr && err != nil {
+				if fe, ok := err.(*core.FieldError); !ok || fe.Reason != tt.reason {
+					t.Errorf("NotEmpty: expected reason %q, got %q", tt.reason, fe.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestSliceChainNotEmptyWithOtherValidators(t *testing.T) {
+	t.Parallel()
+
+	t.Run("NotEmpty_Then_MinLen", func(t *testing.T) {
+		t.Parallel()
+		items := []string{"a"}
+		chain := chains.NewSliceChain(&items, "items").NotEmpty().MinLen(2)
+		err := chain.Validate(nil)
+		if err == nil {
+			t.Error("Expected MinLen failure, got nil")
+		}
+	})
+
+	t.Run("NotEmpty_Success_With_MaxLen", func(t *testing.T) {
+		t.Parallel()
+		items := []string{"a", "b"}
+		chain := chains.NewSliceChain(&items, "items").NotEmpty().MaxLen(3)
+		err := chain.Validate(nil)
+		if err != nil {
+			t.Errorf("Expected success, got: %v", err)
+		}
+	})
+
+	t.Run("NotEmpty_With_Elements", func(t *testing.T) {
+		t.Parallel()
+		tags := []string{"ok"}
+		template := skrub.DefString().Min(3)
+		chain := chains.NewSliceChain(&tags, "tags").NotEmpty().Elements(template)
+		err := chain.Validate(nil)
+		if err == nil {
+			t.Error("Expected element validation failure (string too short), got nil")
+		}
+	})
+}

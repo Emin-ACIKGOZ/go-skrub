@@ -3,6 +3,8 @@
 package chains
 
 import (
+	"net"
+	"net/url"
 	"regexp"
 	"unicode/utf8"
 
@@ -96,10 +98,103 @@ func (c *StringChain) UUID() *StringChain {
 }
 
 // Pattern enforces that the string must match the provided regular expression.
+// If re is nil, validation always fails with core.ReasonPattern.
 func (c *StringChain) Pattern(re *regexp.Regexp) *StringChain {
 	c.validators = append(c.validators, func(v string) error {
-		if !re.MatchString(v) {
+		if re == nil || !re.MatchString(v) {
 			return core.NewFieldError("", v, core.ReasonPattern)
+		}
+		return nil
+	})
+	return c
+}
+
+// URL validates that the string is a valid HTTP(S) URL.
+// It accepts absolute URLs with http:// or https:// schemes.
+func (c *StringChain) URL() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		// Parse the URL to ensure it's well-formed
+		parsed, err := url.Parse(v)
+		if err != nil {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
+		// Require http or https scheme
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
+		// Require a host
+		if parsed.Host == "" {
+			return core.NewFieldError("", v, core.ReasonInvalidURL)
+		}
+
+		return nil
+	})
+	return c
+}
+
+// IP validates that the string is a valid IP address (IPv4 or IPv6).
+func (c *StringChain) IP() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if net.ParseIP(v) == nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIP)
+		}
+		return nil
+	})
+	return c
+}
+
+// IPv4 validates that the string is a valid IPv4 address.
+func (c *StringChain) IPv4() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		ip := net.ParseIP(v)
+		if ip == nil || ip.To4() == nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIPv4)
+		}
+		return nil
+	})
+	return c
+}
+
+// IPv6 validates that the string is a valid IPv6 address.
+// Accepts both pure IPv6 (e.g., ::1) and IPv4-mapped IPv6 (e.g., ::ffff:192.0.2.1).
+// Rejects pure IPv4 addresses (e.g., 192.168.1.1).
+func (c *StringChain) IPv6() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		ip := net.ParseIP(v)
+		if ip == nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIPv6)
+		}
+
+		// Reject pure IPv4 notation (no colons in input).
+		// Accept IPv6 notation (contains colons), including IPv4-mapped (::ffff:x.x.x.x).
+		// This validates input format, preventing IPv4 addresses from passing as IPv6.
+		if !containsColon(v) && ip.To4() != nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIPv6)
+		}
+
+		return nil
+	})
+	return c
+}
+
+// containsColon reports whether the string contains at least one colon character.
+// Used to distinguish IPv6 notation (contains colons) from IPv4 notation (dots only).
+func containsColon(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			return true
+		}
+	}
+	return false
+}
+
+// NotEmpty validates that the string is not empty.
+func (c *StringChain) NotEmpty() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if v == "" {
+			return core.NewFieldError("", v, core.ReasonRequired)
 		}
 		return nil
 	})

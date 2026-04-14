@@ -10,8 +10,15 @@ const (
 	ReasonPattern      = "value does not match required pattern"
 	ReasonInvalidEmail = "invalid email format"
 	ReasonInvalidUUID  = "invalid UUID format"
+	ReasonInvalidURL   = "invalid URL format"
+	ReasonInvalidIP    = "invalid IP address"
+	ReasonInvalidIPv4  = "invalid IPv4 address"
+	ReasonInvalidIPv6  = "invalid IPv6 address"
 
-	// Numeric/Value reasons (NEW)
+	// Numeric/Value reasons
 	ReasonMinValue = "value is less than minimum"
 	ReasonMaxValue = "value exceeds maximum limit"
+
+	// Required/Presence reasons
+	ReasonRequired = "value is required"
 )

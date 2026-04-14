@@ -97,6 +97,62 @@ func (d *StringDef) Pattern(pattern string) *StringDef {
 	return d
 }
 
+// URL enforces HTTP(S) URL format validation.
+// Validates that the string is a well-formed URL with http:// or https:// scheme.
+func (d *StringDef) URL() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.URL()
+	})
+	return d
+}
+
+// IP enforces IP address format validation (IPv4 or IPv6).
+func (d *StringDef) IP() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IP()
+	})
+	return d
+}
+
+// IPv4 enforces IPv4 address format validation.
+func (d *StringDef) IPv4() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IPv4()
+	})
+	return d
+}
+
+// IPv6 enforces IPv6 address format validation.
+func (d *StringDef) IPv6() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IPv6()
+	})
+	return d
+}
+
+// NotEmpty enforces that the string is not empty.
+func (d *StringDef) NotEmpty() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.NotEmpty()
+	})
+	return d
+}
+
 // IntDef is an unbound template for integer validation.
 // It stores configuration modifiers to be applied when the template is bound to a target.
 type IntDef struct {
@@ -142,6 +198,32 @@ func (d *IntDef) Max(vMax int) *IntDef {
 
 	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
 		c.Max(vMax)
+	})
+	return d
+}
+
+// NotZero enforces that the integer is not zero.
+func (d *IntDef) NotZero() *IntDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
+		c.NotZero()
+	})
+	return d
+}
+
+// MatchString enforces that the string representation of the integer matches a regex pattern.
+// The pattern is compiled during the Definition Phase for optimal performance.
+func (d *IntDef) MatchString(pattern string) *IntDef {
+	// Pre-compile regex at definition time to ensure high performance during validation.
+	re := regexp.MustCompile(pattern)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.IntChain) {
+		c.MatchString(re)
 	})
 	return d
 }

@@ -3,6 +3,7 @@
 package middleware_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func TestMiddlewareSuccess(t *testing.T) {
 	// Middleware setup: Validator succeeds (returns nil).
 	handler := hooks.Validate(MockValidator(false), MockHandler(t, &nextExecuted))
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -82,7 +83,7 @@ func TestMiddlewareFailureWithHooks(t *testing.T) {
 	// Middleware setup: Validator fails (returns error).
 	handler := hooks.Validate(MockValidator(true), MockHandler(t, &nextExecuted))
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -116,7 +117,7 @@ func TestMiddlewareFailureFallback(t *testing.T) {
 	// Middleware setup: Validator fails.
 	handler := hooks.Validate(MockValidator(true), MockHandler(t, &nextExecuted))
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -153,7 +154,7 @@ func TestHooksComposeOrder(t *testing.T) {
 	// Validator fails.
 	handler := hooks.Validate(MockValidator(true), MockHandler(t, new(bool)))
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 
 	handler.ServeHTTP(rr, req)
 
