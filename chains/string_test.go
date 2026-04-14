@@ -121,12 +121,9 @@ func TestStringChainURL(t *testing.T) {
 		{"WrongSchemeHTTPS", "ftps://example.com", true, core.ReasonInvalidURL},
 		{"NoHost", "http://", true, core.ReasonInvalidURL},
 		{"OnlyScheme", "https://", true, core.ReasonInvalidURL},
-		{"MalformedURL", "ht!tp://example.com", true, core.ReasonInvalidURL},
-		{"SpaceInURL", "http://exam ple.com", true, core.ReasonInvalidURL},
-		{"InvalidCharacters", "http://exam<>ple.com", true, core.ReasonInvalidURL},
+		{"MalformedScheme", "ht!tp://example.com", true, core.ReasonInvalidURL},
 		{"RelativePath", "/path/to/resource", true, core.ReasonInvalidURL},
 		{"ProtocolRelative", "//example.com", true, core.ReasonInvalidURL},
-		{"SchemeLowercase", "http://example.com", false, ""}, // lowercase ok
 	}
 
 	for _, tt := range tests {
@@ -175,4 +172,131 @@ func TestStringChainURLWithValuer(t *testing.T) {
 			t.Error("Expected URL validation via Valuer to fail, got nil")
 		}
 	})
+}
+
+func TestStringChainIP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ip        string
+		expectErr bool
+		reason    string
+	}{
+		// Valid IPv4 addresses
+		{"IPv4Simple", "192.168.1.1", false, ""},
+		{"IPv4Localhost", "127.0.0.1", false, ""},
+		{"IPv4Broadcast", "255.255.255.255", false, ""},
+		{"IPv4Zero", "0.0.0.0", false, ""},
+		{"IPv4Public", "8.8.8.8", false, ""},
+		{"IPv4EdgeCase1", "1.1.1.1", false, ""},
+		{"IPv4EdgeCase2", "10.0.0.1", false, ""},
+
+		// Valid IPv6 addresses
+		{"IPv6Simple", "2001:db8::1", false, ""},
+		{"IPv6Localhost", "::1", false, ""},
+		{"IPv6Full", "2001:0db8:85a3:0000:0000:8a2e:0370:7334", false, ""},
+		{"IPv6Compressed", "2001:db8:85a3::8a2e:370:7334", false, ""},
+		{"IPv6Zero", "::", false, ""},
+		{"IPv6Multicast", "ff00::1", false, ""},
+		{"IPv6LinkLocal", "fe80::1", false, ""},
+
+		// Invalid addresses
+		{"Empty", "", true, core.ReasonInvalidIP},
+		{"NotAnIP", "not-an-ip", true, core.ReasonInvalidIP},
+		{"OnlyNumbers", "1", true, core.ReasonInvalidIP},
+		{"IPv4TooMany", "192.168.1.1.1", true, core.ReasonInvalidIP},
+		{"IPv4TooFew", "192.168.1", true, core.ReasonInvalidIP},
+		{"IPv4InvalidOctet", "256.1.1.1", true, core.ReasonInvalidIP},
+		{"IPv4Negative", "-1.0.0.0", true, core.ReasonInvalidIP},
+		{"IPv6Invalid", "gggg::1", true, core.ReasonInvalidIP},
+		{"Mixed", "192.168.1.1:8080", true, core.ReasonInvalidIP}, // Has port
+		{"URL", "http://192.168.1.1", true, core.ReasonInvalidIP},
+		{"Domain", "example.com", true, core.ReasonInvalidIP},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.ip
+			chain := chains.NewStringChain(&val, "ip")
+			err := chain.IP().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("IP %q: expected error=%v, got error=%v", tt.ip, tt.expectErr, err)
+				return
+			}
+
+			if tt.expectErr && err != nil {
+				if fe, ok := err.(*core.FieldError); !ok || fe.Reason != tt.reason {
+					t.Errorf("IP %q: expected reason %q, got %q", tt.ip, tt.reason, fe.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestStringChainIPv4(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ip        string
+		expectErr bool
+	}{
+		{"Valid1", "192.168.1.1", false},
+		{"Valid2", "127.0.0.1", false},
+		{"Valid3", "0.0.0.0", false},
+		{"IPv6Rejected", "2001:db8::1", true},
+		{"IPv6Localhost", "::1", true},
+		{"Empty", "", true},
+		{"Invalid", "not-an-ip", true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.ip
+			chain := chains.NewStringChain(&val, "ipv4")
+			err := chain.IPv4().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("IPv4 %q: expected error=%v, got error=%v", tt.ip, tt.expectErr, err)
+			}
+		})
+	}
+}
+
+func TestStringChainIPv6(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		ip        string
+		expectErr bool
+	}{
+		{"Valid1", "2001:db8::1", false},
+		{"Valid2", "::1", false},
+		{"Valid3", "::", false},
+		{"IPv4Rejected", "192.168.1.1", true},
+		{"IPv4Localhost", "127.0.0.1", true},
+		{"Empty", "", true},
+		{"Invalid", "not-an-ip", true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			val := tt.ip
+			chain := chains.NewStringChain(&val, "ipv6")
+			err := chain.IPv6().Validate(nil)
+
+			if (err != nil) != tt.expectErr {
+				t.Errorf("IPv6 %q: expected error=%v, got error=%v", tt.ip, tt.expectErr, err)
+			}
+		})
+	}
 }

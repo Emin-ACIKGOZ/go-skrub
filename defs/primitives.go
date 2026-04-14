@@ -109,6 +109,39 @@ func (d *StringDef) URL() *StringDef {
 	return d
 }
 
+// IP enforces IP address format validation (IPv4 or IPv6).
+func (d *StringDef) IP() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IP()
+	})
+	return d
+}
+
+// IPv4 enforces IPv4 address format validation.
+func (d *StringDef) IPv4() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IPv4()
+	})
+	return d
+}
+
+// IPv6 enforces IPv6 address format validation.
+func (d *StringDef) IPv6() *StringDef {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.modifiers = append(d.modifiers, func(c *chains.StringChain) {
+		c.IPv6()
+	})
+	return d
+}
+
 // IntDef is an unbound template for integer validation.
 // It stores configuration modifiers to be applied when the template is bound to a target.
 type IntDef struct {

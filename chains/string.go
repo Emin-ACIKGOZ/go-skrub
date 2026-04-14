@@ -3,6 +3,7 @@
 package chains
 
 import (
+	"net"
 	"net/url"
 	"regexp"
 	"unicode/utf8"
@@ -127,6 +128,42 @@ func (c *StringChain) URL() *StringChain {
 			return core.NewFieldError("", v, core.ReasonInvalidURL)
 		}
 
+		return nil
+	})
+	return c
+}
+
+// IP validates that the string is a valid IP address (IPv4 or IPv6).
+func (c *StringChain) IP() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		if net.ParseIP(v) == nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIP)
+		}
+		return nil
+	})
+	return c
+}
+
+// IPv4 validates that the string is a valid IPv4 address.
+func (c *StringChain) IPv4() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		ip := net.ParseIP(v)
+		if ip == nil || ip.To4() == nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIPv4)
+		}
+		return nil
+	})
+	return c
+}
+
+// IPv6 validates that the string is a valid IPv6 address.
+func (c *StringChain) IPv6() *StringChain {
+	c.validators = append(c.validators, func(v string) error {
+		ip := net.ParseIP(v)
+		if ip == nil || ip.To4() != nil {
+			// If it parses as IPv4, or fails to parse, it's not IPv6
+			return core.NewFieldError("", v, core.ReasonInvalidIPv6)
+		}
 		return nil
 	})
 	return c

@@ -106,6 +106,48 @@ func TestStringDefBinding(t *testing.T) {
 			t.Errorf("Expected composed URL validation to succeed, got: %v", err)
 		}
 	})
+
+	t.Run("BindingAppliesIPv4", func(t *testing.T) {
+		t.Parallel()
+
+		ipTemplate := defs.NewStringDef().IPv4()
+
+		validIP := "192.168.1.1"
+		invalidIP := "::1" // IPv6, should fail
+
+		// Test success.
+		rule := ipTemplate.Bind(&validIP, "ip_address")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected IPv4 success, got: %v", err)
+		}
+
+		// Test failure on IPv6.
+		rule = ipTemplate.Bind(&invalidIP, "ip_address")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonInvalidIPv4 {
+			t.Errorf("Expected IPv4 format failure, got: %v", rule.Validate(nil))
+		}
+	})
+
+	t.Run("BindingAppliesIPv6", func(t *testing.T) {
+		t.Parallel()
+
+		ipTemplate := defs.NewStringDef().IPv6()
+
+		validIP := "2001:db8::1"
+		invalidIP := "127.0.0.1" // IPv4, should fail
+
+		// Test success.
+		rule := ipTemplate.Bind(&validIP, "ip_address")
+		if err := rule.Validate(nil); err != nil {
+			t.Errorf("Expected IPv6 success, got: %v", err)
+		}
+
+		// Test failure on IPv4.
+		rule = ipTemplate.Bind(&invalidIP, "ip_address")
+		if fe, ok := rule.Validate(nil).(*core.FieldError); !ok || fe.Reason != core.ReasonInvalidIPv6 {
+			t.Errorf("Expected IPv6 format failure, got: %v", rule.Validate(nil))
+		}
+	})
 }
 
 func TestIntDefBinding(t *testing.T) {

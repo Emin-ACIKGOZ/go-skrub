@@ -183,6 +183,54 @@ func BenchmarkSkrub_Validator_Email(b *testing.B) {
 	}
 }
 
+// Benchmark IPv4 validator
+func BenchmarkSkrub_Validator_IPv4(b *testing.B) {
+	ip := "192.168.1.1"
+	chain := skrub.String(&ip, "ipv4_address").IPv4()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark IPv6 validator
+func BenchmarkSkrub_Validator_IPv6(b *testing.B) {
+	ip := "2001:db8::1"
+	chain := skrub.String(&ip, "ipv6_address").IPv6()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark IP validator (both IPv4 and IPv6)
+func BenchmarkSkrub_Validator_IP(b *testing.B) {
+	ip := "192.168.1.1"
+	chain := skrub.String(&ip, "ip_address").IP()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // Benchmark multiple validators combined (URL + Min length + Pattern)
 func BenchmarkSkrub_Validators_Combined(b *testing.B) {
 	url := "https://example.com/webhook"
@@ -195,6 +243,32 @@ func BenchmarkSkrub_Validators_Combined(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ctx := core.NewContext(cfg)
 		if err := chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Benchmark all network validators combined (URL + IPv4 + IPv6)
+func BenchmarkSkrub_Validators_Network_Combined(b *testing.B) {
+	url := "https://192.168.1.1"
+	urlChain := skrub.String(&url, "webhook_url").URL()
+	ipv4 := "10.0.0.1"
+	ipv4Chain := skrub.String(&ipv4, "ipv4").IPv4()
+	ipv6 := "2001:db8::1"
+	ipv6Chain := skrub.String(&ipv6, "ipv6").IPv6()
+	cfg := core.Config{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx := core.NewContext(cfg)
+		if err := urlChain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		if err := ipv4Chain.Validate(ctx); err != nil {
+			b.Fatal(err)
+		}
+		if err := ipv6Chain.Validate(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}
