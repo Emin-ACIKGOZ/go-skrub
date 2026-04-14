@@ -157,16 +157,36 @@ func (c *StringChain) IPv4() *StringChain {
 }
 
 // IPv6 validates that the string is a valid IPv6 address.
+// Accepts both pure IPv6 (e.g., ::1) and IPv4-mapped IPv6 (e.g., ::ffff:192.0.2.1).
+// Rejects pure IPv4 addresses (e.g., 192.168.1.1).
 func (c *StringChain) IPv6() *StringChain {
 	c.validators = append(c.validators, func(v string) error {
 		ip := net.ParseIP(v)
-		if ip == nil || ip.To4() != nil {
-			// If it parses as IPv4, or fails to parse, it's not IPv6
+		if ip == nil {
 			return core.NewFieldError("", v, core.ReasonInvalidIPv6)
 		}
+
+		// Reject pure IPv4 notation (no colons in input).
+		// Accept IPv6 notation (contains colons), including IPv4-mapped (::ffff:x.x.x.x).
+		// This validates input format, preventing IPv4 addresses from passing as IPv6.
+		if !containsColon(v) && ip.To4() != nil {
+			return core.NewFieldError("", v, core.ReasonInvalidIPv6)
+		}
+
 		return nil
 	})
 	return c
+}
+
+// containsColon reports whether the string contains at least one colon character.
+// Used to distinguish IPv6 notation (contains colons) from IPv4 notation (dots only).
+func containsColon(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			return true
+		}
+	}
+	return false
 }
 
 // NotEmpty validates that the string is not empty.

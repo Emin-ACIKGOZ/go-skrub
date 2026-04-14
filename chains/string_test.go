@@ -280,6 +280,8 @@ func TestStringChainIPv6(t *testing.T) {
 		{"Valid1", "2001:db8::1", false},
 		{"Valid2", "::1", false},
 		{"Valid3", "::", false},
+		{"IPv4Mapped", "::ffff:192.0.2.1", false},
+		{"IPv4MappedLoopback", "::ffff:127.0.0.1", false},
 		{"IPv4Rejected", "192.168.1.1", true},
 		{"IPv4Localhost", "127.0.0.1", true},
 		{"Empty", "", true},

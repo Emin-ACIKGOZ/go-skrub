@@ -94,13 +94,16 @@ func FuzzStringChainIPv4(f *testing.F) {
 // - Validator never panics
 // - Invalid IPv6 addresses are rejected
 // - Valid IPv6 addresses are accepted
+// - IPv4-mapped IPv6 addresses are accepted (::ffff:x.x.x.x)
 func FuzzStringChainIPv6(f *testing.F) {
 	// Seed with known test cases
 	f.Add("::1")
 	f.Add("::")
 	f.Add("2001:db8::1")
 	f.Add("fe80::1")
-	f.Add("::ffff:192.0.2.1")
+	f.Add("::ffff:192.0.2.1")           // IPv4-mapped standard
+	f.Add("::ffff:127.0.0.1")           // IPv4-mapped loopback
+	f.Add("::ffff:0:0")                 // IPv4-mapped all zeros
 	f.Add("not-an-ipv6")
 	f.Add("")
 	f.Add("192.168.1.1")
