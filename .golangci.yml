@@ -1,22 +1,17 @@
 # .golangci.yml - Standardized Go Linter Configuration
-# golangci-lint v1.64.8+ compatible
+# golangci-lint v2 compatible
+version: "2"
 
 run:
-  # Default timeout for linter
   timeout: 5m
-  # Include test files
   tests: true
 
 output:
   print-issued-lines: true
   print-linter-name: true
 
-linters-settings:
-  misspell:
-    locale: US
-
 linters:
-  disable-all: true
+  default: none
   enable:
     # --- Core & Bugs ---
     - bodyclose
@@ -50,3 +45,11 @@ issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - goconst
+        - perfsprint
+    - path: internal/tagparser/.*
+      linters:
+        - goconst

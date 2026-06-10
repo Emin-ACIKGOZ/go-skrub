@@ -104,7 +104,8 @@ func TestUUIDAdapterIntegration(t *testing.T) {
 
 		rule := skrub.String(adapter, "id").UUID()
 
-		if err := rule.Validate(nil); err != nil {
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
 			t.Fatalf("Expected validation success for valid UUID, got error: %v", err)
 		}
 	})
@@ -116,7 +117,8 @@ func TestUUIDAdapterIntegration(t *testing.T) {
 
 		rule := skrub.String(adapter, "id").UUID()
 
-		err := rule.Validate(nil)
+		ctx := core.NewContext(core.Config{})
+		err := rule.Validate(ctx)
 
 		if fe, ok := err.(*core.FieldError); !ok || fe.Reason != "invalid UUID format" {
 			t.Fatalf("Expected UUID format failure, got: %v", err)

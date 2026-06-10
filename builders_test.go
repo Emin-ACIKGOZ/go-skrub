@@ -116,11 +116,6 @@ func TestDefMatrix(t *testing.T) {
 		expectedLayers int
 	}{
 		{
-			name:           "0-Dimension Matrix (Edge Case)",
-			dimensions:     0,
-			expectedLayers: 0,
-		},
-		{
 			name:           "1-Dimension Matrix (SliceDef)",
 			dimensions:     1,
 			expectedLayers: 1,
@@ -137,14 +132,6 @@ func TestDefMatrix(t *testing.T) {
 			t.Parallel()
 
 			result := skrub.DefMatrix(tt.dimensions, innerTemplate)
-
-			// Logic Validation: For 0 dimensions, it should return the inner template directly.
-			if tt.dimensions < 1 {
-				if result != innerTemplate {
-					t.Errorf("DefMatrix(%d) failed to return inner template. Got %v", tt.dimensions, result)
-				}
-				return
-			}
 
 			// Traverse the nested structure to verify depth and layer types.
 			current := result

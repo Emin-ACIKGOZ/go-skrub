@@ -35,16 +35,15 @@ func NewSliceChain(target any, name string) *SliceChain {
 // Validate executes all length validators on the bound slice and recursively validates
 // each element. It utilizes the mutable context stack to avoid allocations during traversal.
 func (c *SliceChain) Validate(ctx *core.Context) error {
-	// Ensure a non-nil context is used for pathing and configuration.
-	// In the mutable stack model, the same context instance is passed through the tree.
-	if ctx == nil {
-		ctx = core.NewContext(core.Config{})
-	}
-
 	if err := c.Acquire(); err != nil {
 		return err
 	}
 	defer c.Release()
+
+	// If ctx is nil, create a temporary context for standalone use.
+	if ctx == nil {
+		ctx = core.NewContext(core.Config{})
+	}
 
 	val, isNil, err := c.resolveTarget()
 	if err != nil || isNil {
@@ -54,7 +53,9 @@ func (c *SliceChain) Validate(ctx *core.Context) error {
 	// 1. Execute slice-level validators BEFORE pushing name to stack.
 	for _, fn := range c.validators {
 		if err := fn(val); err != nil {
-			return c.Fail(ctx, val.Interface(), err.Error())
+			if e := c.emitError(ctx, val.Interface(), err.Error()); e != nil {
+				return e
+			}
 		}
 	}
 
@@ -159,7 +160,37 @@ func (c *SliceChain) shouldSkipElement(v reflect.Value) bool {
 	if v.Kind() == reflect.Ptr && v.IsNil() {
 		return true
 	}
-	return !reflect.ValueOf(safeReflect.ResolveValue(v)).IsValid()
+	return false
+}
+
+// CompileSliceConfig applies the given modifiers to a temporary SliceChain
+// and extracts the compiled validators into an immutable ChainConfig.
+func CompileSliceConfig(modifiers []func(*SliceChain)) *core.ChainConfig {
+	tmp := &SliceChain{
+		validators: make([]func(reflect.Value) error, 0, len(modifiers)),
+	}
+	for _, mod := range modifiers {
+		mod(tmp)
+	}
+	return &core.ChainConfig{
+		Validators: wrapSliceValidators(tmp.validators),
+	}
+}
+
+func wrapSliceValidators(vals []func(reflect.Value) error) []func(*core.Context, any) *core.FieldError {
+	result := make([]func(*core.Context, any) *core.FieldError, len(vals))
+	for i, fn := range vals {
+		result[i] = func(_ *core.Context, val any) *core.FieldError {
+			if err := fn(reflect.ValueOf(val)); err != nil {
+				if fe, ok := err.(*core.FieldError); ok {
+					return fe
+				}
+				return core.NewFieldError("", val, err.Error())
+			}
+			return nil
+		}
+	}
+	return result
 }
 
 // SetTarget updates the validation target, allowing the chain to be reused.
@@ -175,9 +206,9 @@ func (c *SliceChain) Reset() {
 	c.validators = c.validators[:0]
 	c.elementTemplates = c.elementTemplates[:0]
 
-	// Wipe caches on reset so pooled chains don't leak memory or carry stale targets.
-	c.flyweights = nil
-	c.rebindables = nil
+	// Clear caches while preserving capacity to avoid re-allocation on pool reuse.
+	c.flyweights = c.flyweights[:0]
+	c.rebindables = c.rebindables[:0]
 }
 
 // MinLen enforces a minimum number of elements in the slice.

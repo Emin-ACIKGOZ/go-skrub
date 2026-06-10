@@ -26,16 +26,22 @@ func NewStringDef() *StringDef {
 
 // Bind creates a lightweight StringChain bound to the target.
 // It applies all pre-configured modifiers to the new chain instance.
+//
+// Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
+// *StringChain with CAS guards and will be removed in v0.6.0.
 func (d *StringDef) Bind(target any, name string) core.Rule {
+	return d.BindStateless(target, name)
+}
+
+// BindStateless creates a goroutine-safe StringRule bound to the target.
+// The returned Rule can be shared across goroutines without synchronization.
+func (d *StringDef) BindStateless(target any, name string) *chains.StringRule {
 	d.mu.Lock()
 	modifiers := d.modifiers
 	d.mu.Unlock()
 
-	chain := chains.NewStringChain(target, name)
-	for _, mod := range modifiers {
-		mod(chain)
-	}
-	return chain
+	config := chains.CompileStringConfig(modifiers)
+	return chains.NewStringRule(config, target, name)
 }
 
 // Min enforces a minimum character length.
@@ -168,16 +174,22 @@ func NewIntDef() *IntDef {
 }
 
 // Bind creates a lightweight IntChain bound to the target.
+//
+// Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
+// *IntChain with CAS guards and will be removed in v0.6.0.
 func (d *IntDef) Bind(target any, name string) core.Rule {
+	return d.BindStateless(target, name)
+}
+
+// BindStateless creates a goroutine-safe IntRule bound to the target.
+// The returned Rule can be shared across goroutines without synchronization.
+func (d *IntDef) BindStateless(target any, name string) *chains.IntRule {
 	d.mu.Lock()
 	modifiers := d.modifiers
 	d.mu.Unlock()
 
-	chain := chains.NewIntChain(target, name)
-	for _, mod := range modifiers {
-		mod(chain)
-	}
-	return chain
+	config := chains.CompileIntConfig(modifiers)
+	return chains.NewIntRule(config, target, name)
 }
 
 // Min enforces a minimum value.

@@ -210,14 +210,29 @@ func (c *StringChain) Validate(ctx *core.Context) error {
 	}
 	defer c.Release()
 
+	// If ctx is nil, create a temporary context for standalone use.
+	if ctx == nil {
+		ctx = core.NewContext(core.Config{})
+	}
+
 	val, isNil, err := c.resolveTarget()
 	if err != nil || isNil {
 		return err
 	}
 
+	// Push chain name to context stack for proper path tracking.
+	if c.Name != "" {
+		if err := ctx.Push(c.Name); err != nil {
+			return err
+		}
+		defer ctx.Pop()
+	}
+
 	for _, fn := range c.validators {
 		if err := fn(val); err != nil {
-			return c.Fail(ctx, val, err.Error())
+			if e := c.emitError(ctx, val, err.Error()); e != nil {
+				return e
+			}
 		}
 	}
 	return nil
@@ -237,8 +252,54 @@ func (c *StringChain) resolveTarget() (string, bool, error) {
 		}
 		return "", false, core.ErrMisuse
 	default:
+		// Reflection-based fallback: handle *T where T implements core.Valuer
+		val, isNil, err := resolveValuerIndirect(c.target)
+		if err != nil || isNil {
+			return "", isNil, err
+		}
+		if s, ok := val.(string); ok {
+			return s, false, nil
+		}
 		return "", false, core.ErrMisuse
 	}
+}
+
+// CompileStringConfig applies the given modifiers to a temporary StringChain
+// and extracts the compiled validators into an immutable ChainConfig.
+// This is used by StringDef.BindStateless to construct goroutine-safe Rules.
+func CompileStringConfig(modifiers []func(*StringChain)) *core.ChainConfig {
+	tmp := &StringChain{
+		validators: make([]func(string) error, 0, len(modifiers)),
+	}
+	for _, mod := range modifiers {
+		mod(tmp)
+	}
+	return &core.ChainConfig{
+		Validators: wrapStringValidators(tmp.validators),
+	}
+}
+
+// wrapStringValidators converts type-specific validators to the generic
+// ChainConfig.Validators signature (func(ctx, any) *FieldError).
+// The inner *FieldError type is preserved through the wrapping.
+func wrapStringValidators(vals []func(string) error) []func(*core.Context, any) *core.FieldError {
+	result := make([]func(*core.Context, any) *core.FieldError, len(vals))
+	for i, fn := range vals {
+		result[i] = func(_ *core.Context, val any) *core.FieldError {
+			s, ok := val.(string)
+			if !ok {
+				return core.NewFieldError("", val, core.ErrMisuse.Error())
+			}
+			if err := fn(s); err != nil {
+				if fe, ok := err.(*core.FieldError); ok {
+					return fe
+				}
+				return core.NewFieldError("", val, err.Error())
+			}
+			return nil
+		}
+	}
+	return result
 }
 
 // Reset clears the chain state, including its target and rules,

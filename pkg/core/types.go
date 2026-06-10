@@ -6,7 +6,9 @@
 package core
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // =============================================================================
@@ -38,6 +40,19 @@ type Resetter interface {
 // Template represents a definition of validation logic (unbound).
 type Template interface {
 	Bind(target any, name string) Rule
+}
+
+// StructLevel provides the interface for struct-level validators.
+// Implementations receive this in ValidateWith callbacks to access
+// field values and report cross-field errors.
+type StructLevel interface {
+	// FieldValue returns the value of a named field, or an error if
+	// the field does not exist or is not addressable.
+	FieldValue(name string) (any, error)
+	// ReportError records a validation error for the given field path and reason.
+	ReportError(path, reason string)
+	// Context returns the current validation context.
+	Context() *Context
 }
 
 // =============================================================================
@@ -83,4 +98,46 @@ func NewFieldError(path string, value any, reason string) *FieldError {
 		Value:  value,
 		Reason: reason,
 	}
+}
+
+// ValidationErrors collects multiple field validation errors.
+// It implements the error interface and supports Go 1.20+ multi-error unwrapping
+// for compatibility with errors.Is and errors.As.
+type ValidationErrors []*FieldError
+
+// Error returns a multiline string of all accumulated errors.
+// Format matches go-validator's convention for compatibility.
+func (ve ValidationErrors) Error() string {
+	if len(ve) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, fe := range ve {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fe.Error())
+	}
+	return sb.String()
+}
+
+// Unwrap implements the Go 1.20+ interface for multi-error unwrapping.
+// This enables errors.Is and errors.As to search within the accumulated errors.
+func (ve ValidationErrors) Unwrap() []error {
+	result := make([]error, len(ve))
+	for i, fe := range ve {
+		result[i] = fe
+	}
+	return result
+}
+
+// Is enables targeted error matching across ValidationErrors.
+// Returns true if any contained FieldError matches the target.
+func (ve ValidationErrors) Is(target error) bool {
+	for _, fe := range ve {
+		if errors.Is(fe, target) {
+			return true
+		}
+	}
+	return false
 }

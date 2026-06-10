@@ -33,12 +33,12 @@ var (
 	// -------------------------------------------------------------------------
 	// Skrub Pre-compiled Rules (Optimized Engine)
 	// -------------------------------------------------------------------------
-	nameRule  = defs.NewStringDef().Min(3).Bind(&testUser.Name, "Name")
-	ageRule   = defs.NewIntDef().Min(18).Bind(&testUser.Age, "Age")
+	nameRule  = defs.NewStringDef().Min(3).BindStateless(&testUser.Name, "Name")
+	ageRule   = defs.NewIntDef().Min(18).BindStateless(&testUser.Age, "Age")
 	emailRule = skrub.String(&testUser.Email, "Email").Email()
 	tagsRule  = defs.NewSliceDef().MinLen(1).Elements(
 		defs.NewStringDef().Max(10),
-	).Bind(&testUser.Tags, "Tags")
+	).BindStateless(&testUser.Tags, "Tags")
 
 	matrixTemplate = skrub.DefMatrix(3, skrub.DefInt().Min(0))
 	boundMatrix    = matrixTemplate.Bind(&matrixData, "matrix")
@@ -145,7 +145,7 @@ func BenchmarkSkrub_Validator_URLDef(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		chain := urlTemplate.Bind(&url, "webhook_url")
+		chain := urlTemplate.BindStateless(&url, "webhook_url")
 		ctx := core.NewContext(cfg)
 		if err := chain.Validate(ctx); err != nil {
 			b.Fatal(err)
@@ -299,7 +299,7 @@ func BenchmarkSkrub_Validator_NotZero(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		chain := template.Bind(&num, "count")
+		chain := template.BindStateless(&num, "count")
 		ctx := core.NewContext(cfg)
 		if err := chain.Validate(ctx); err != nil {
 			b.Fatal(err)
@@ -340,7 +340,7 @@ func BenchmarkSkrub_Validators_Required_Combined(b *testing.B) {
 		if err := strChain.Validate(ctx); err != nil {
 			b.Fatal(err)
 		}
-		numChain := numTemplate.Bind(&num, "count")
+		numChain := numTemplate.BindStateless(&num, "count")
 		if err := numChain.Validate(ctx); err != nil {
 			b.Fatal(err)
 		}

@@ -28,16 +28,17 @@ var (
 // Validate executes a list of validation rules against a target value using default configuration.
 //
 // Defaults: MaxDepth is 100, and recursion warnings are disabled.
-func Validate(target any, rules ...Rule) error {
-	return ValidateWithConfig(target, core.Config{}, rules...)
+func Validate(_ any, rules ...Rule) error {
+	return ValidateWithConfig(core.Config{}, rules...)
 }
 
-// ValidateWithConfig executes validation rules against a target value using a custom configuration.
-// This is the primary entry point for using features like OnWarning or adjusting MaxDepth.
+// ValidateWithConfig executes validation rules using a custom configuration.
+// This is the primary entry point for using features like OnWarning, MaxDepth,
+// and error accumulation.
 //
 // It utilizes a SafePool to retrieve a thread-local Context, ensuring high performance
 // and isolation across concurrent goroutines.
-func ValidateWithConfig(_ any, cfg core.Config, rules ...Rule) error {
+func ValidateWithConfig(cfg core.Config, rules ...Rule) error {
 	// 1. Acquire a thread-local context from the global pool.
 	item, err := globalCtxPool.Get()
 	if err != nil {
@@ -51,6 +52,7 @@ func ValidateWithConfig(_ any, cfg core.Config, rules ...Rule) error {
 		ctx.SetMaxDepth(cfg.MaxDepth)
 	}
 	ctx.SetWarningThreshold(cfg.WarningThreshold, cfg.OnWarning)
+	ctx.SetAccumulateErrors(cfg.AccumulateErrors)
 
 	// 3. Ensure the context is returned to the pool after execution.
 	// The Put method will automatically call ctx.Reset() via the Resetter interface.
@@ -58,11 +60,28 @@ func ValidateWithConfig(_ any, cfg core.Config, rules ...Rule) error {
 
 	// Execute all bound rules
 	for _, rule := range rules {
-		// Rule.Validate accepts the core.Context alias defined in rule.go.
 		if err := rule.Validate(ctx); err != nil {
-			return err
+			if !cfg.AccumulateErrors {
+				return err
+			}
+			// In accumulate mode, chains call emitError which calls RecordError
+			// and returns nil. If a non-nil error is returned here, it means
+			// the error was NOT emitted through emitError (e.g., ErrConcurrencyViolation
+			// from Acquire). Wrap and accumulate it.
+			if fe, ok := err.(*core.FieldError); ok {
+				ctx.RecordError(fe)
+			} else {
+				ctx.RecordError(&core.FieldError{
+					Path:   "",
+					Value:  nil,
+					Reason: err.Error(),
+				})
+			}
 		}
 	}
 
+	if cfg.AccumulateErrors && ctx.HasErrors() {
+		return ctx.Errors()
+	}
 	return nil
 }

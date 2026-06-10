@@ -51,10 +51,11 @@ func NewSafePool(cfg Config) *SafePool {
 	if cfg.Factory != nil {
 		// Pre-populate the channel with factory-created items.
 		for i := 0; i < cfg.Capacity; i++ {
-			// Ensure only valid objects are added to the pool.
-			if item := cfg.Factory(); item != nil {
-				p.items <- item
+			item := cfg.Factory()
+			if item == nil {
+				panic("skrub: SafePool factory returned nil during pre-population")
 			}
+			p.items <- item
 		}
 	}
 
@@ -83,14 +84,17 @@ func (p *SafePool) Get() (any, error) {
 
 // Put returns an item to the pool.
 //
-// If the item implements core.Resetter, its Reset method is called before returning
-// it to the pool, ensuring a clean state for reuse.
+// If the item implements core.Resetter, its Reset method is called before the
+// item is returned to the pool. This ensures the item is in a clean state
+// before any goroutine receives it from the channel.
 // If the pool is full, the item is silently dropped to prevent blocking the caller.
 func (p *SafePool) Put(item any) {
 	if item == nil {
 		return
 	}
 
+	// Reset the item BEFORE returning it to the channel. This avoids a race
+	// where another goroutine's Get() receives the item before Reset() completes.
 	if resetter, ok := item.(core.Resetter); ok {
 		resetter.Reset()
 	}
@@ -99,8 +103,6 @@ func (p *SafePool) Put(item any) {
 	// (channel capacity is reached). The item is dropped on default.
 	select {
 	case p.items <- item:
-		// Item successfully returned.
 	default:
-		// Pool is full. Item is dropped.
 	}
 }

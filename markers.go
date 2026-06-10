@@ -18,14 +18,16 @@ import (
 // Verify StringChain implements core.Rule (for validation logic)
 // and core.Resetter (for object pooling).
 var (
-	_ core.Rule     = (*chains.StringChain)(nil)
-	_ core.Resetter = (*chains.StringChain)(nil)
+	_ core.Rule       = (*chains.StringChain)(nil)
+	_ core.Resetter   = (*chains.StringChain)(nil)
+	_ core.Rebindable = (*chains.StringChain)(nil)
 )
 
 // Verify IntChain implements core.Rule and core.Resetter.
 var (
-	_ core.Rule     = (*chains.IntChain)(nil)
-	_ core.Resetter = (*chains.IntChain)(nil)
+	_ core.Rule       = (*chains.IntChain)(nil)
+	_ core.Resetter   = (*chains.IntChain)(nil)
+	_ core.Rebindable = (*chains.IntChain)(nil)
 )
 
 // Verify SliceChain implements core.Rule and core.Resetter.
@@ -44,3 +46,19 @@ var _ core.Template = (*defs.IntDef)(nil)
 
 // Verify SliceDef implements core.Template.
 var _ core.Template = (*defs.SliceDef)(nil)
+
+// --- Stateless Rule Verification ---
+
+// Verify StringRule/IntRule/SliceRule implement core.Rule.
+var (
+	_ core.Rule = (*chains.StringRule)(nil)
+	_ core.Rule = (*chains.IntRule)(nil)
+	_ core.Rule = (*chains.SliceRule)(nil)
+)
+
+// --- Struct Chain Verification ---
+
+var (
+	_ core.Rule = (*chains.StructChain)(nil)
+	_ core.Rule = (*chains.MapRule)(nil)
+)

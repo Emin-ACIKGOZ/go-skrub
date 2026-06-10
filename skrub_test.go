@@ -109,7 +109,7 @@ func TestValidateWithConfig_ConfigurationDelegation(t *testing.T) {
 		},
 	}
 
-	err := skrub.ValidateWithConfig(nil, cfg, recursionTestRule)
+	err := skrub.ValidateWithConfig(cfg, recursionTestRule)
 
 	// 1. Verify Hard Stop logic
 	re, ok := err.(*core.RecursionError)
@@ -133,31 +133,20 @@ func TestValidateWithConfig_ConfigurationDelegation(t *testing.T) {
 	}
 }
 
-// TestValidateWithConfig_TargetIgnored ensures the root Validate call is target-agnostic.
-func TestValidateWithConfig_TargetIgnored(t *testing.T) {
+// TestValidateWithConfig_NoTargetParameter ensures validation works without a target parameter.
+func TestValidateWithConfig_NoTargetParameter(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name   string
-		target any
-	}{
-		{"Nil Target", nil},
-		{"Pointer Target", &struct{ Name string }{}},
-		{"Value Target", 42},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rule := &MockRule{}
-			err := skrub.ValidateWithConfig(tt.target, core.Config{}, rule)
-			if err != nil {
-				t.Fatalf("Validation failed for %s: %v", tt.name, err)
-			}
-			if rule.CallCount != 1 {
-				t.Error("Rule was not called.")
-			}
-		})
-	}
+	t.Run("Direct Call", func(t *testing.T) {
+		rule := &MockRule{}
+		err := skrub.ValidateWithConfig(core.Config{}, rule)
+		if err != nil {
+			t.Fatalf("Validation failed: %v", err)
+		}
+		if rule.CallCount != 1 {
+			t.Error("Rule was not called.")
+		}
+	})
 }
 
 func TestValidate_GlobalPoolPanicRecovery(t *testing.T) {

@@ -11,9 +11,11 @@ import (
 //
 // Every nested layer created by this factory is anonymous; the root name is applied
 // when the resulting template is bound to a target.
+//
+// Panics if dimensions <= 0, as a matrix must have at least 1 dimension.
 func NewMatrixDef(dimensions int, template core.Template) core.Template {
 	if dimensions <= 0 {
-		return template
+		panic("skrub: NewMatrixDef requires dimensions > 0")
 	}
 
 	// Base Case: 1 Dimension is an anonymous SliceDef containing the element template.

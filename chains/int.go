@@ -37,15 +37,29 @@ func (c *IntChain) Validate(ctx *core.Context) error {
 	}
 	defer c.Release()
 
+	// If ctx is nil, create a temporary context for standalone use.
+	if ctx == nil {
+		ctx = core.NewContext(core.Config{})
+	}
+
 	val, isNil, err := c.resolveTarget()
 	if err != nil || isNil {
 		return err
 	}
 
+	// Push chain name to context stack for proper path tracking.
+	if c.Name != "" {
+		if err := ctx.Push(c.Name); err != nil {
+			return err
+		}
+		defer ctx.Pop()
+	}
+
 	for _, fn := range c.validators {
 		if err := fn(val); err != nil {
-			// FieldError path is managed by the Context/Recorder stack.
-			return c.Fail(ctx, val, err.Error())
+			if e := c.emitError(ctx, val, err.Error()); e != nil {
+				return e
+			}
 		}
 	}
 
@@ -67,8 +81,50 @@ func (c *IntChain) resolveTarget() (int, bool, error) {
 		}
 		return 0, false, core.ErrMisuse
 	default:
+		// Reflection-based fallback: handle *T where T implements core.Valuer
+		val, isNil, err := resolveValuerIndirect(c.target)
+		if err != nil || isNil {
+			return 0, isNil, err
+		}
+		if v, ok := val.(int); ok {
+			return v, false, nil
+		}
 		return 0, false, core.ErrMisuse
 	}
+}
+
+// CompileIntConfig applies the given modifiers to a temporary IntChain
+// and extracts the compiled validators into an immutable ChainConfig.
+func CompileIntConfig(modifiers []func(*IntChain)) *core.ChainConfig {
+	tmp := &IntChain{
+		validators: make([]func(int) error, 0, len(modifiers)),
+	}
+	for _, mod := range modifiers {
+		mod(tmp)
+	}
+	return &core.ChainConfig{
+		Validators: wrapIntValidators(tmp.validators),
+	}
+}
+
+func wrapIntValidators(vals []func(int) error) []func(*core.Context, any) *core.FieldError {
+	result := make([]func(*core.Context, any) *core.FieldError, len(vals))
+	for i, fn := range vals {
+		result[i] = func(_ *core.Context, val any) *core.FieldError {
+			v, ok := val.(int)
+			if !ok {
+				return core.NewFieldError("", val, core.ErrMisuse.Error())
+			}
+			if err := fn(v); err != nil {
+				if fe, ok := err.(*core.FieldError); ok {
+					return fe
+				}
+				return core.NewFieldError("", val, err.Error())
+			}
+			return nil
+		}
+	}
+	return result
 }
 
 // Reset clears the chain state, preparing it for SafePool reuse.

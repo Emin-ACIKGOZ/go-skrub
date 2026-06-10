@@ -37,6 +37,11 @@ type Config struct {
 
 	// OnWarning is called when WarningThreshold is reached.
 	OnWarning func(path string, depth int)
+
+	// AccumulateErrors enables collection of all validation errors instead
+	// of short-circuiting on the first failure. When true, ValidateWithConfig
+	// returns a ValidationErrors containing every field error.
+	AccumulateErrors bool
 }
 
 type pathSegment struct {
@@ -46,11 +51,13 @@ type pathSegment struct {
 }
 
 // Context tracks validation traversal state, including path and depth.
-// It enforces recursion limits and supports structured path generation.
+// It enforces recursion limits, error accumulation, and supports
+// structured path generation.
 type Context struct {
-	stack []pathSegment
-	depth int
-	cfg   Config
+	stack  []pathSegment
+	depth  int
+	cfg    Config
+	errors []*FieldError
 }
 
 // NewContext creates a new validation Context using the provided configuration.
@@ -99,20 +106,53 @@ func (c *Context) PushIndex(index int) error {
 }
 
 // Pop removes the most recently pushed path segment.
-// It includes a defensive boundary check to prevent slice underflow panics.
+// It includes defensive boundary checks to prevent slice underflow panics
+// and negative depth counters.
 func (c *Context) Pop() {
 	if len(c.stack) == 0 {
 		return
 	}
 	c.stack = c.stack[:len(c.stack)-1]
-	c.depth--
+	if c.depth > 0 {
+		c.depth--
+	}
 }
 
 // Reset clears the context state for reuse in object pools.
-// It resets the stack and depth but maintains the underlying capacity.
+// It resets the stack, depth, errors, and configuration to zero values
+// to prevent state leaking between pooled contexts.
 func (c *Context) Reset() {
 	c.stack = c.stack[:0]
 	c.depth = 0
+	c.errors = c.errors[:0]
+	c.cfg = Config{}
+}
+
+// IsAccumulating reports whether this context is configured to collect
+// all validation errors instead of short-circuiting.
+func (c *Context) IsAccumulating() bool {
+	return c.cfg.AccumulateErrors
+}
+
+// RecordError appends a field error to the context's accumulator.
+// In accumulate mode, validators call this instead of returning immediately.
+func (c *Context) RecordError(fe *FieldError) {
+	c.errors = append(c.errors, fe)
+}
+
+// HasErrors reports whether any errors have been accumulated.
+func (c *Context) HasErrors() bool {
+	return len(c.errors) > 0
+}
+
+// SetAccumulateErrors enables or disables error accumulation mode.
+func (c *Context) SetAccumulateErrors(acc bool) {
+	c.cfg.AccumulateErrors = acc
+}
+
+// Errors returns all accumulated field errors as a ValidationErrors collection.
+func (c *Context) Errors() ValidationErrors {
+	return ValidationErrors(c.errors)
 }
 
 // SetMaxDepth updates the recursion limit for the current context.
@@ -139,6 +179,7 @@ func (c *Context) checkDepth(currentKeyHint string) error {
 	}
 	if c.cfg.WarningThreshold > 0 && c.depth == c.cfg.WarningThreshold {
 		if c.cfg.OnWarning != nil {
+			// Build path only when warning is actually triggered
 			c.cfg.OnWarning(c.String()+buildPath(currentKeyHint), c.depth)
 		}
 	}

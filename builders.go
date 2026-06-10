@@ -58,6 +58,20 @@ func DefSlice() *defs.SliceDef {
 	return defs.NewSliceDef()
 }
 
+// DefStruct creates a new StructDef for explicit field-level validation.
+// Use Field() to register validators and Bind() to produce a StructChain.
+//
+// Example:
+//
+//	rule := skrub.DefStruct().
+//	    Field("Name", skrub.DefString().NotEmpty()).
+//	    Field("Age", skrub.DefInt().Min(18)).
+//	    Bind(&user)
+//	skrub.Validate(&user, rule)
+func DefStruct() *defs.StructDef {
+	return defs.NewStructDef()
+}
+
 // DefMatrix creates a recursive template that automatically nests SliceDef templates
 // to validate N-dimensional slices (matrices).
 //

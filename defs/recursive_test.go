@@ -15,14 +15,15 @@ func TestNewMatrixDef(t *testing.T) {
 	// Define the innermost rule.
 	innerIntRule := defs.NewIntDef().Min(0)
 
-	t.Run("ZeroDimensionsReturnsBaseTemplate", func(t *testing.T) {
+	t.Run("ZeroDimensionsPanics", func(t *testing.T) {
 		t.Parallel()
-		// If dimensions <= 0, it should return the inner rule directly.
-		template := defs.NewMatrixDef(0, innerIntRule)
-
-		if template != innerIntRule {
-			t.Errorf("Expected NewMatrixDef(0) to return inner rule, got a different template.")
-		}
+		// NewMatrixDef with dimensions <= 0 should panic.
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("Expected panic for NewMatrixDef(0), but none occurred.")
+			}
+		}()
+		defs.NewMatrixDef(0, innerIntRule)
 	})
 
 	t.Run("OneDimensionPathing", func(t *testing.T) {
