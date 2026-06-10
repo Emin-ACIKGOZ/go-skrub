@@ -27,6 +27,15 @@ go get github.com/Emin-ACIKGOZ/go-skrub
 * **Chains (`chains`)** are *stateful*, bound validators targeting a specific value.
 * Binding a template produces a chain (`core.Rule`) that can be executed.
 
+```mermaid
+graph LR
+    T[Template: DefString] -- ".Bind(&val)" --> C[Chain: Bound Rule]
+    C -- "skrub.Validate" --> CTX[Pool-Acquired Context]
+    CTX -- "Atomic Guard" --> EXEC[Execute Rule]
+    EXEC -- "Success" --> OK[Return Nil]
+    EXEC -- "Failure" --> ERR[Return FieldError]
+```
+
 ### Validation Flow
 
 1. Define templates (`DefString`, `DefInt`, `DefSlice`, …)
