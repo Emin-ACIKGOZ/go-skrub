@@ -29,12 +29,27 @@ func NewSliceDef() *SliceDef {
 	}
 }
 
-// Bind creates a lightweight SliceChain bound to the target.
-// It applies length constraints and registers element templates for recursive validation.
-//
-// Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
-// *SliceChain with CAS guards and will be removed in v0.6.0.
+// Bind creates a goroutine-safe SliceRule bound to the target.
+// The returned Rule can be shared across goroutines without synchronization.
+// For single-goroutine use with maximum performance, use BindCAS instead.
 func (d *SliceDef) Bind(target any, name string) core.Rule {
+	return d.BindStateless(target, name)
+}
+
+// BindStateless creates a goroutine-safe SliceRule bound to the target.
+func (d *SliceDef) BindStateless(target any, name string) *chains.SliceRule {
+	d.mu.Lock()
+	modifiers := d.modifiers
+	elements := d.elementTemplates
+	d.mu.Unlock()
+
+	config := chains.CompileSliceConfig(modifiers)
+	return chains.NewSliceRule(config, target, name, elements)
+}
+
+// BindCAS creates a SliceChain bound to the target with CAS guards.
+// NOT goroutine-safe — use only for single-goroutine validation.
+func (d *SliceDef) BindCAS(target any, name string) *chains.SliceChain {
 	d.mu.Lock()
 	modifiers := d.modifiers
 	elements := d.elementTemplates
@@ -46,18 +61,6 @@ func (d *SliceDef) Bind(target any, name string) core.Rule {
 		mod(chain)
 	}
 	return chain
-}
-
-// BindStateless creates a goroutine-safe SliceRule bound to the target.
-// The returned Rule can be shared across goroutines without synchronization.
-func (d *SliceDef) BindStateless(target any, name string) *chains.SliceRule {
-	d.mu.Lock()
-	modifiers := d.modifiers
-	elements := d.elementTemplates
-	d.mu.Unlock()
-
-	config := chains.CompileSliceConfig(modifiers)
-	return chains.NewSliceRule(config, target, name, elements)
 }
 
 // MinLen enforces a minimum slice length.

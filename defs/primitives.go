@@ -24,22 +24,11 @@ func NewStringDef() *StringDef {
 	}
 }
 
-// Bind creates a lightweight StringChain bound to the target.
-// The returned chain has CAS guards and should NOT be shared across goroutines.
-// For goroutine-safe validation, use BindStateless.
-//
-// Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
-// *StringChain with CAS guards and will be removed in v0.6.0.
+// Bind creates a goroutine-safe StringRule bound to the target.
+// The returned Rule can be shared across goroutines without synchronization.
+// For single-goroutine use with maximum performance, use BindCAS instead.
 func (d *StringDef) Bind(target any, name string) core.Rule {
-	d.mu.Lock()
-	modifiers := d.modifiers
-	d.mu.Unlock()
-
-	chain := chains.NewStringChain(target, name)
-	for _, mod := range modifiers {
-		mod(chain)
-	}
-	return chain
+	return d.BindStateless(target, name)
 }
 
 // BindStateless creates a goroutine-safe StringRule bound to the target.
@@ -51,6 +40,22 @@ func (d *StringDef) BindStateless(target any, name string) *chains.StringRule {
 
 	config := chains.CompileStringConfig(modifiers)
 	return chains.NewStringRule(config, target, name)
+}
+
+// BindCAS creates a StringChain bound to the target with CAS guards.
+// Unlike Bind, the returned chain is NOT goroutine-safe — concurrent use
+// returns ErrConcurrencyViolation. Use this only when validation happens
+// in a single goroutine and maximum throughput is required.
+func (d *StringDef) BindCAS(target any, name string) *chains.StringChain {
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
+
+	chain := chains.NewStringChain(target, name)
+	for _, mod := range modifiers {
+		mod(chain)
+	}
+	return chain
 }
 
 // Min enforces a minimum character length.
@@ -184,9 +189,26 @@ func NewIntDef() *IntDef {
 
 // Bind creates a lightweight IntChain bound to the target.
 //
-// Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
-// *IntChain with CAS guards and will be removed in v0.6.0.
+// Bind creates a goroutine-safe IntRule bound to the target.
+// The returned Rule can be shared across goroutines without synchronization.
+// For single-goroutine use with maximum performance, use BindCAS instead.
 func (d *IntDef) Bind(target any, name string) core.Rule {
+	return d.BindStateless(target, name)
+}
+
+// BindStateless creates a goroutine-safe IntRule bound to the target.
+func (d *IntDef) BindStateless(target any, name string) *chains.IntRule {
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
+
+	config := chains.CompileIntConfig(modifiers)
+	return chains.NewIntRule(config, target, name)
+}
+
+// BindCAS creates an IntChain bound to the target with CAS guards.
+// NOT goroutine-safe — use only for single-goroutine validation.
+func (d *IntDef) BindCAS(target any, name string) *chains.IntChain {
 	d.mu.Lock()
 	modifiers := d.modifiers
 	d.mu.Unlock()
@@ -196,17 +218,6 @@ func (d *IntDef) Bind(target any, name string) core.Rule {
 		mod(chain)
 	}
 	return chain
-}
-
-// BindStateless creates a goroutine-safe IntRule bound to the target.
-// The returned Rule can be shared across goroutines without synchronization.
-func (d *IntDef) BindStateless(target any, name string) *chains.IntRule {
-	d.mu.Lock()
-	modifiers := d.modifiers
-	d.mu.Unlock()
-
-	config := chains.CompileIntConfig(modifiers)
-	return chains.NewIntRule(config, target, name)
 }
 
 // Min enforces a minimum value.

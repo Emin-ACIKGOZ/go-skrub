@@ -4,27 +4,31 @@ CPU: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
 Go: go1.26.3 linux/amd64
 All: go test -bench=<filter> -benchmem -count=3
 
---- SMALL STRUCT (4 fields) ---
+--- DEFAULT PATH: Bind() -> goroutine-safe Rule ---
 
-GoValidator_Small (v.Struct)        ~1,487 ns/op   242 B/op   10 allocs/op
-Skrub_Small_Optimized               ~1,164 ns/op   665 B/op   13 allocs/op   ← 1.3x faster
+Small struct (4 fields)  ~1,550 ns/op  1,080 B/op  28 allocs/op   ← parity with go-validator
+Deep matrix (1000 el)    ~254,000 ns/op 236 KiB/op 7,332 allocs/op
 
---- DEEP MATRIX (10x10x10 = 1,000 elements) ---
+--- VS GO-VALIDATOR ---
 
-GoValidator_DeepMatrix              ~110,000 ns/op  42 KiB/op  2,322 allocs/op
-Skrub_DeepMatrix_Optimized          ~ 43,000 ns/op  352 B/op    2 allocs/op   ← 2.5x faster, 120x less memory
+GoValidator_Small         ~1,500 ns/op    242 B/op  10 allocs/op
+GoValidator_DeepMatrix    ~104,000 ns/op  42 KiB/op 2,322 allocs/op
 
---- INDIVIDUAL VALIDATORS (skrub only) ---
+--- INDIVIDUAL VALIDATORS (BindStateless) ---
 
-URL                                 ~305 ns/op  400 B/op   2 allocs/op
-Email                               ~492 ns/op  257 B/op   1 allocs/op
-IPv4                                ~141 ns/op  272 B/op   2 allocs/op
-NotEmpty (string)                   ~ 96 ns/op  256 B/op   1 allocs/op
+URL                       ~305 ns/op  400 B/op   2 allocs/op
+Email                     ~492 ns/op  257 B/op   1 allocs/op
+IPv4                      ~145 ns/op  272 B/op   2 allocs/op
+NotEmpty (string)         ~ 92 ns/op  256 B/op   1 allocs/op
 
---- TRADEOFF: Bind() vs BindStateless() ---
+--- FAST PATH: BindCAS() -> CAS-guarded chain (single goroutine only) ---
 
-Bind()->StringChain (CAS-guarded)    ~104 ns/op  256 B/op   1 allocs/op   ← faster, NOT goroutine-safe
-BindStateless()->StringRule          ~190 ns/op  384 B/op   4 allocs/op   ← goroutine-safe, slight overhead
+StringChain.Validate      ~104 ns/op  256 B/op   1 allocs/op
+IntChain.Validate         ~ 90 ns/op  256 B/op   1 allocs/op
+SliceChain.Validate
+  (flyweight cached)      ~  2 allocs total for 1000 elements
 
-Use Bind() for single-goroutine validation (zero-alloc flyweight caching).
-Use BindStateless() when sharing rules across goroutines.
+--- TRADEOFF ---
+
+Use Bind() for concurrent code (default, goroutine-safe).
+Use BindCAS() for single-goroutine hot paths (zero-alloc flyweights).

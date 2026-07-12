@@ -48,9 +48,7 @@ func ValidateWithConfig(cfg core.Config, rules ...Rule) error {
 
 	// 2. Apply the provided configuration.
 	// If the user provides a custom MaxDepth, we override the pooled context's config.
-	if cfg.MaxDepth != 0 {
-		ctx.SetMaxDepth(cfg.MaxDepth)
-	}
+	ctx.SetMaxDepth(cfg.MaxDepth)
 	ctx.SetWarningThreshold(cfg.WarningThreshold, cfg.OnWarning)
 	ctx.SetAccumulateErrors(cfg.AccumulateErrors)
 

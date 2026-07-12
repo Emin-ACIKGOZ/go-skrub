@@ -190,14 +190,16 @@ skrub.String(adapters.UUID(uuidObj), "id").UUID()
 
 ## Benchmarks (i5-1135G7, go1.26)
 
-| Scenario | go-skrub | go-validator |
-|----------|----------|-------------|
-| Small struct (4 fields) | **1,164ns** / 665B / 13 allocs | 1,487ns / 242B / 10 allocs |
-| Deep matrix (1000 elements) | **43μs** / 352B / 2 allocs | 110μs / 42KiB / 2,322 allocs |
-| URL validation | **305ns** / 400B / 2 allocs | — |
-| Email validation | **492ns** / 257B / 1 alloc | 900ns / 89B / 5 allocs |
+Defaults are goroutine-safe. A `BindCAS()` fast path is available for single-goroutine use.
 
-go-skrub is 1.3x faster on structs and 2.5x faster on deep matrices than go-validator, with dramatically less memory allocation (2 vs 2,322 allocs per matrix). Individual validators are faster because they avoid struct reflection entirely. See `bench_results.txt` for full detail.
+| Scenario | go-skrub (Bind) | go-skrub (BindCAS) | go-validator |
+|----------|----------------|-------------------|-------------|
+| Small struct (4 fields) | **1,550ns** / 28 allocs | **1,164ns** / 13 allocs | 1,500ns / 10 allocs |
+| Deep matrix (1000 el) | 254μs / 7,332 allocs | **43μs** / 2 allocs | 104μs / 2,322 allocs |
+| URL validation | **305ns** / 2 allocs | — | — |
+| Email validation | **492ns** / 1 alloc | — | 900ns / 5 allocs |
+
+`Bind()` is goroutine-safe and at parity with go-validator for structs. `BindCAS()` matches the original zero-alloc performance for single-goroutine use. See `bench_results.txt` for full detail.
 
 ## Error Model
 
