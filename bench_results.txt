@@ -1,0 +1,41 @@
+Benchmark Results (2026-07-12)
+===============================
+CPU: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+Go: go1.26.3 linux/amd64
+All: go test -bench=<filter> -benchmem -count=3
+
+--- SMALL STRUCT (4 fields) ---
+
+GoValidator_Small (v.Struct)        ~1,475 ns/op   243 B/op   10 allocs/op
+Skrub_Small_Optimized               ~1,565 ns/op 1,080 B/op   28 allocs/op
+
+--- DEEP MATRIX (10x10x10 = 1,000 elements) ---
+
+GoValidator_DeepMatrix              ~105,000 ns/op  42 KiB/op  2,322 allocs/op
+Skrub_DeepMatrix_Optimized          ~245,000 ns/op 236 KiB/op  7,332 allocs/op
+
+--- INDIVIDUAL VALIDATORS (skrub only) ---
+
+URL                                 ~305 ns/op  400 B/op   2 allocs/op
+Email                               ~492 ns/op  257 B/op   1 allocs/op
+IPv4                                ~141 ns/op  272 B/op   2 allocs/op
+NotEmpty (string)                   ~ 96 ns/op  256 B/op   1 allocs/op
+
+--- OLD CHAIN vs NEW RULE ---
+
+StringChain.Validate                ~104 ns/op  256 B/op   1 allocs/op
+StringRule.Validate (goroutine-safe)~190 ns/op  384 B/op   4 allocs/op
+
+IntChain.Validate                   ~ 90 ns/op  256 B/op   1 allocs/op
+IntRule.Validate (goroutine-safe)   ~130 ns/op  352 B/op   2 allocs/op
+
+--- NOTES ---
+
+- Small struct performance is at parity with go-validator.
+  The 28 vs 10 allocs comes from the ChainConfig wrapping layer.
+- Deep matrix is 2.3x slower on skrub because SliceRule allocates
+  per-call flyweights instead of caching them (safe for concurrency).
+  Users who need max matrix perf can use the old SliceChain directly.
+- Old CAS-guarded chains are faster but can't be shared across goroutines.
+- New stateless rules are goroutine-safe with a small overhead.
+- Core validators (URL, Email, IPv4) are very fast — no struct reflection.
