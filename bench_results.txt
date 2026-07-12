@@ -2,19 +2,19 @@ Benchmark Results (2026-07-12)
 ===============================
 CPU: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
 Go: go1.26.3 linux/amd64
-All: go test -bench=<filter> -benchmem -count=3
+All: go test -bench=<filter> -benchmem -count=5
 
---- DEFAULT PATH: Bind() -> goroutine-safe Rule ---
+--- DEFAULT PATH: Bind() -> goroutine-safe Rule (sync.Pool optimized) ---
 
-Small struct (4 fields)  ~1,550 ns/op  1,080 B/op  28 allocs/op   ← parity with go-validator
-Deep matrix (1000 el)    ~254,000 ns/op 236 KiB/op 7,332 allocs/op
+Small struct (4 fields)  ~950 ns/op   445 B/op   7 allocs/op   ← 1.6x faster than go-validator
+Deep matrix (1000 el)    ~147 μs/op  193 KB/op  1,472 allocs   ← 1.4x slower than go-validator
 
 --- VS GO-VALIDATOR ---
 
 GoValidator_Small         ~1,500 ns/op    242 B/op  10 allocs/op
-GoValidator_DeepMatrix    ~104,000 ns/op  42 KiB/op 2,322 allocs/op
+GoValidator_DeepMatrix    ~107,000 ns/op  42 KiB/op 2,322 allocs/op
 
---- INDIVIDUAL VALIDATORS (BindStateless) ---
+--- INDIVIDUAL VALIDATORS ---
 
 URL                       ~305 ns/op  400 B/op   2 allocs/op
 Email                     ~492 ns/op  257 B/op   1 allocs/op
@@ -25,10 +25,13 @@ NotEmpty (string)         ~ 92 ns/op  256 B/op   1 allocs/op
 
 StringChain.Validate      ~104 ns/op  256 B/op   1 allocs/op
 IntChain.Validate         ~ 90 ns/op  256 B/op   1 allocs/op
-SliceChain.Validate
-  (flyweight cached)      ~  2 allocs total for 1000 elements
+SliceChain (flyweight)    ~  2 allocs total for 1000 elements
 
---- TRADEOFF ---
+--- ARCHITECTURE ---
 
-Use Bind() for concurrent code (default, goroutine-safe).
-Use BindCAS() for single-goroutine hot paths (zero-alloc flyweights).
+Bind() is goroutine-safe via sync.Pool per-goroutine flyweight caching.
+The first Validate() per goroutine allocates flyweights; subsequent calls
+reuse via SetTarget() — zero allocs for elements after the first batch.
+
+BindCAS() skips the pool and mutates flyweights directly via CAS guard.
+Use for maximum single-goroutine throughput.

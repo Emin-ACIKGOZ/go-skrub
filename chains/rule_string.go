@@ -17,6 +17,11 @@ type StringRule struct {
 	name   string
 }
 
+// SetTarget updates the validation target, enabling the flyweight pattern.
+func (r *StringRule) SetTarget(target any) {
+	r.target = target
+}
+
 // NewStringRule creates a StringRule from the given config, target, and name.
 func NewStringRule(config *core.ChainConfig, target any, name string) *StringRule {
 	return &StringRule{config: config, target: target, name: name}

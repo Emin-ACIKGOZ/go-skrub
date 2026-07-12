@@ -15,6 +15,11 @@ type IntRule struct {
 	name   string
 }
 
+// SetTarget updates the validation target, enabling the flyweight pattern.
+func (r *IntRule) SetTarget(target any) {
+	r.target = target
+}
+
 // NewIntRule creates an IntRule from the given config, target, and name.
 func NewIntRule(config *core.ChainConfig, target any, name string) *IntRule {
 	return &IntRule{config: config, target: target, name: name}
