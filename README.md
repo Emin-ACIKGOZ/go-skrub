@@ -1,17 +1,22 @@
 # go-skrub
 
-**go-skrub** is a zero-panic, request-scoped validation library for Go that provides **stateful, bound validators** with strong concurrency guarantees, reusable templates, and controlled recursion. It is designed for correctness, composability, and safe reuse in high-concurrency environments.
+**go-skrub** is a zero-panic, zero-dependency validation library for Go. It provides both a **declarative tag-based API** (compatible with go-validator struct tags) and a **programmatic builder API** for explicit validation rules. Rules are goroutine-safe, allocations are minimal, and misuse always returns errors — never panics.
 
 ## Features
 
-- **Bound validation chains**: Validators bind directly to target memory addresses.
-- **Reusable templates**: Define validation once, bind many times.
-- **Zero-panic guarantees**: Misuse and concurrency errors are returned explicitly.
-- **Concurrency-safe by design**: Atomic guards prevent concurrent chain execution.
-- **Recursive validation**: Safe traversal of nested structures with depth limits.
-- **Extensible**: Register custom validators for domain-specific types.
-- **HTTP middleware support**: First-class integration with `net/http`.
-- **Adapters**: Validate custom types (e.g. `time.Time`, UUIDs) without reflection.
+- **Struct tag validation**: `validate:"required,min=3,max=50,email"` — drop-in compatible with go-validator
+- **Goroutine-safe rules**: Stateless `Rule` types (`StringRule`, `IntRule`, `SliceRule`, `MapRule`) safe for concurrent use
+- **Error accumulation**: Collect all validation errors instead of short-circuiting — `AccumulateErrors` mode
+- **OR pipe**: `required|email` — first success wins
+- **Control flow tags**: `omitempty`, `omitnil`, `omitzero`, `isdefault`, `dive`, `keys`/`endkeys`
+- **Alias support**: `RegisterAlias("iscolor", "hexcolor|rgb|rgba|hsl|hsla|cmyk")`
+- **Recursive validation**: N-dimensional slices, maps with key+value validation
+- **Cross-field validation**: Struct-level callbacks via `ValidateWith`
+- **Programmatic API**: Fluent builder for cases where tags aren't enough
+- **Zero-panic**: All errors are returned — `ErrMisuse`, `ErrConcurrencyViolation`, `ErrPoolExhausted`
+- **Zero runtime dependencies**: The library itself imports only the Go standard library
+- **HTTP middleware**: Built-in `net/http` support
+- **Adapters**: Validate `time.Time`, UUIDs, and custom types via the `Valuer` interface
 
 ## Installation
 
@@ -19,131 +24,143 @@
 go get github.com/Emin-ACIKGOZ/go-skrub
 ```
 
-## Core Concepts
+## Quick Start (Tag-Based)
 
-### Templates vs Chains
+```go
+type User struct {
+    Name  string `validate:"required,min=3,max=50"`
+    Email string `validate:"required,email"`
+    Age   int    `validate:"min=18"`
+    Tags  []string `validate:"required,min=1,dive,max=20"`
+}
 
-* **Templates (`defs`)** are *unbound* validation definitions.
-* **Chains (`chains`)** are *stateful*, bound validators targeting a specific value.
-* Binding a template produces a chain (`core.Rule`) that can be executed.
+user := User{Name: "Alice", Email: "alice@example.com", Age: 25, Tags: []string{"go"}}
 
-```mermaid
-graph LR
-    T[Template: DefString] -- ".Bind(&val)" --> C[Chain: Bound Rule]
-    C -- "skrub.Validate" --> CTX[Pool-Acquired Context]
-    CTX -- "Atomic Guard" --> EXEC[Execute Rule]
-    EXEC -- "Success" --> OK[Return Nil]
-    EXEC -- "Failure" --> ERR[Return FieldError]
+rule := skrub.DefStruct().UseTags().Bind(&user)
+err := skrub.Validate(&user, rule)
 ```
 
-### Validation Flow
-
-1. Define templates (`DefString`, `DefInt`, `DefSlice`, …)
-2. Bind templates to targets (via `Bind` or facade helpers)
-3. Execute validation with `Validate` or `ValidateWithConfig`
-
-## Quick Example
+## Quick Start (Programmatic)
 
 ```go
 type User struct {
     Name  string
-    Tags  []string
+    Email string
+    Age   int
 }
 
-err := skrub.Validate(
-    &user,
-    skrub.DefString().Min(3).Bind(&user.Name, "name"),
-    skrub.DefSlice().
-        MinLen(1).
-        Elements(skrub.DefString().Max(20)).
-        Bind(&user.Tags, "tags"),
+user := User{Name: "Alice", Email: "alice@example.com", Age: 25}
+
+err := skrub.Validate(&user,
+    skrub.DefString().Min(3).Max(50).BindStateless(&user.Name, "name"),
+    skrub.DefString().Email().BindStateless(&user.Email, "email"),
+    skrub.DefInt().Min(18).BindStateless(&user.Age, "age"),
 )
 ```
 
-## Validators
+## Supported Tags
 
-### String Validators
+| Tag | Description | Example |
+|-----|-------------|---------|
+| `required` | Value must be non-zero/non-nil | `validate:"required"` |
+| `min` | Minimum length/value | `validate:"min=3"` |
+| `max` | Maximum length/value | `validate:"max=100"` |
+| `len` | Exact length | `validate:"len=10"` |
+| `gte` | Greater than or equal | `validate:"gte=18"` |
+| `lte` | Less than or equal | `validate:"lte=99"` |
+| `gt` | Greater than | `validate:"gt=18"` |
+| `lt` | Less than | `validate:"lt=99"` |
+| `eq` | Equal to | `validate:"eq=42"` |
+| `ne` | Not equal | `validate:"ne=0"` |
+| `email` | Email format | `validate:"email"` |
+| `url` | HTTP/HTTPS URL only | `validate:"url"` |
+| `uuid` | UUID format (8-4-4-4-12) | `validate:"uuid"` |
+| `ip` | IP address (v4 or v6) | `validate:"ip"` |
+| `ipv4` | IPv4 address | `validate:"ipv4"` |
+| `ipv6` | IPv6 address | `validate:"ipv6"` |
+| `\|` (pipe) | OR — first success wins | `validate:"required\|email"` |
+| `omitempty` | Skip validation if empty/nil/zero | `validate:"omitempty,min=3"` |
+| `omitnil` | Skip validation if nil only | `validate:"omitnil,min=3"` |
+| `omitzero` | Skip if zero (stricter for slices) | `validate:"omitzero"` |
+| `isdefault` | Pass only when value IS zero | `validate:"isdefault"` |
+| `dive` | Recurse into slice/map elements | `validate:"dive,min=2"` |
+| `keys` | Validate map keys | `validate:"dive,keys,min=1,endkeys"` |
+| `endkeys` | End map key validation block | `validate:"dive,keys,...,endkeys,value_tags"` |
 
-* **`URL()`**: Validates HTTP/HTTPS URLs with valid scheme and host.
-  ```go
-  skrub.String(&webhook, "url").URL()
-  ```
+## Error Accumulation
 
-* **`IP()`**, **`IPv4()`**, **`IPv6()`**: Validate IP addresses.
-  ```go
-  skrub.String(&addr, "ipv4").IPv4()
-  skrub.String(&addr, "ipv6").IPv6()
-  skrub.String(&addr, "ip").IP()  // Accepts both
-  ```
-
-* **`NotEmpty()`**: Rejects empty strings.
-  ```go
-  skrub.String(&name, "name").NotEmpty()
-  ```
-
-* **`Email()`**, **`UUID()`**, **`Pattern()`**, **`Min()`**, **`Max()`**: Standard string validators.
-
-### Integer Validators
-
-* **`NotZero()`**: Rejects zero values.
-  ```go
-  skrub.DefInt().NotZero().Bind(&count, "count")
-  ```
-
-* **`MatchString(regexp)`**: Validates string representation against a regex.
-  ```go
-  pattern := regexp.MustCompile(`^[1-9]\d{2}$`)
-  skrub.DefInt().MatchString(pattern).Bind(&id, "id")
-  ```
-
-* **`Min()`**, **`Max()`**: Boundary validation.
-
-### Slice Validators
-
-* **`NotEmpty()`**: Rejects empty slices.
-  ```go
-  skrub.Slice(&items, "items").NotEmpty()
-  ```
-
-* **`MinLen()`**, **`MaxLen()`**: Length constraints.
-* **`Elements(def)`**: Validate each element recursively.
-
-## Facade API
-
-The `skrub` package re-exports core types and provides helpers:
-
-* `DefString`, `DefInt`, `DefSlice`, `DefMatrix`
-* `String`, `Slice` (direct chain creation)
-* `Validate`, `ValidateWithConfig`
-* `Register` for custom validators
-* Error types: `ErrMisuse`, `ErrConcurrencyViolation`, `ErrPoolExhausted`
-
-## Recursive Validation
+By default, go-skrub returns on the first error (short-circuit). Enable accumulation to collect all errors:
 
 ```go
-matrix := skrub.DefMatrix(3, skrub.DefInt().Min(0))
-matrix.Bind(&data, "matrix").Validate(ctx)
+err := skrub.ValidateWithConfig(core.Config{AccumulateErrors: true}, rule)
+if err != nil {
+    if ves, ok := err.(core.ValidationErrors); ok {
+        for _, fe := range ves {
+            fmt.Println(fe.Path, fe.Reason)
+        }
+    }
+}
 ```
 
-Recursion is guarded by:
+## Cross-Field Validation
 
-* **MaxDepth** (hard stop)
-* **WarningThreshold** (soft warning hook)
+Struct-level callbacks enable cross-field rules like password confirmation:
 
-## Concurrency & Safety
+```go
+rule := skrub.DefStruct().
+    Field("Password", skrub.DefString().Min(8)).
+    Field("ConfirmPassword", skrub.DefString()).
+    ValidateWith(func(sl core.StructLevel) error {
+        pw, _ := sl.FieldValue("Password")
+        confirm, _ := sl.FieldValue("ConfirmPassword")
+        if pw != confirm {
+            sl.ReportError("ConfirmPassword", "must match Password")
+        }
+        return nil
+    }).
+    Bind(&user)
+```
 
-* Chains use atomic state guards (`Acquire` / `Release`)
-* Concurrent use of a chain returns `ErrConcurrencyViolation`
-* All misuse is reported via errors—never panics
+## Recursive / Matrix Validation
 
-## Extensibility
+```go
+// 3D matrix where every integer must be >= 0
+matrixTemplate := skrub.DefMatrix(3, skrub.DefInt().Min(0))
+matrixTemplate.Bind(&data, "matrix").Validate(ctx)
+```
 
-Register custom validators with full type safety:
+## Map Validation
+
+```go
+type Container struct {
+    Data map[string]string `validate:"dive,keys,min=1,max=10,endkeys,required"`
+}
+rule := skrub.DefStruct().UseTags().Bind(&container)
+```
+
+## Custom Validators
+
+Register custom type validators:
 
 ```go
 skrub.Register(func(u *User, name string) core.Rule {
     return NewUserChain(u, name)
 })
+```
+
+Register tag validators for struct tag discovery:
+
+```go
+skrub.RegisterTagValidator("hexcolor", func(param string) (core.Template, error) {
+    return skrub.DefString().Pattern(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`), nil
+})
+```
+
+## Aliases
+
+```go
+skrub.RegisterAlias("iscolor", "hexcolor|rgb|rgba|hsl|hsla|cmyk")
+// Then use in tags: `validate:"iscolor"`
 ```
 
 ## HTTP Middleware
@@ -153,7 +170,6 @@ hooks := middleware.NewHooks()
 hooks.Compose(func(w http.ResponseWriter, r *http.Request, err error) {
     http.Error(w, err.Error(), http.StatusBadRequest)
 })
-
 handler := hooks.Validate(validateRequest, nextHandler)
 ```
 
@@ -161,28 +177,42 @@ handler := hooks.Validate(validateRequest, nextHandler)
 
 Validate custom types without reflection:
 
-* `adapters.Time`, `TimeWithLayout`
-* `adapters.UUID`, `UUIDPtr`
-
 ```go
 skrub.String(adapters.Time(t), "created_at").Pattern(`^\d{4}-`)
+skrub.String(adapters.UUID(uuidObj), "id").UUID()
 ```
+
+## Concurrency
+
+- **Stateless Rules** (from `BindStateless` or `Def` → `Bind`): Goroutine-safe, no CAS guards
+- **Stateful Chains** (from `skrub.String()`, `chains.NewStringChain()`): CAS-guarded, concurrent access returns `ErrConcurrencyViolation`
+- All Rules are pooled for minimal allocation
+
+## Benchmarks
+
+| Scenario | go-skrub | go-validator |
+|----------|----------|-------------|
+| Struct (3 fields) | ~750ns, 5 allocs | ~1,600ns, 10 allocs |
+| Email validation | ~570ns, 3 allocs | ~900ns, 5 allocs |
+| Deep matrix (1000 el) | ~247μs, 7k allocs | ~112μs, 2k allocs |
+
+go-validator is faster for large matrices (its reflection cache is more mature); go-skrub is faster for typical struct/field validation. See `bench_results.txt` for details.
 
 ## Error Model
 
-* `FieldError`: Path-aware validation failure
-* `RecursionError`: Max depth exceeded
-* Errors support standard `errors.Is` / `errors.As`
+- `FieldError{Path, Value, Reason, Cause}` — path-aware validation failure
+- `RecursionError{Path, Depth, MaxDepth}` — recursion limit exceeded
+- `ValidationErrors` — accumulated errors (implements `Unwrap() []error` for `errors.Is`/`errors.As`)
+- Sentinels: `ErrMisuse`, `ErrConcurrencyViolation`, `ErrPoolExhausted`
 
 ## Design Goals
 
-* Explicit state
-* Predictable execution
-* No hidden globals
-* No reflection-heavy hot paths
-* Production-safe defaults
+- **Correctness first** — no panics, clear error paths, well-defined behavior for edge cases
+- **Zero dependencies** — the library itself imports only stdlib
+- **Performance** — pre-bound rules, immutable configs, minimal allocation on hot paths
+- **Goroutine safety** — stateless Rules safe for concurrent use
+- **go-validator compatible** — tag parsing with full structural parity (see `MIGRATION_GUIDE.md`)
 
 ## License
 
 MIT
-
