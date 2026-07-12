@@ -67,15 +67,9 @@ func NewContext(cfg Config) *Context {
 		cfg.MaxDepth = defaultMaxDepth
 	}
 	return &Context{
-		stack: nil, // Lazy allocation
+		stack: make([]pathSegment, 0, defaultStackCapacity),
 		depth: 0,
 		cfg:   cfg,
-	}
-}
-
-func (c *Context) ensureStack() {
-	if c.stack == nil {
-		c.stack = make([]pathSegment, 0, defaultStackCapacity)
 	}
 }
 
@@ -87,7 +81,6 @@ func (c *Context) Push(key string) error {
 		c.depth--
 		return err
 	}
-	c.ensureStack()
 	c.stack = append(c.stack, pathSegment{Key: key, IsIdx: false})
 	return nil
 }
@@ -100,7 +93,6 @@ func (c *Context) PushIndex(index int) error {
 		c.depth--
 		return err
 	}
-	c.ensureStack()
 	c.stack = append(c.stack, pathSegment{Index: index, IsIdx: true})
 	return nil
 }

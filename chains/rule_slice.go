@@ -10,40 +10,29 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 )
 
-// flyweightSet holds per-goroutine pre-bound rules for slice element validation.
-// Each goroutine gets its own set from the SliceRule's sync.Pool, avoiding
-// repeated Bind() calls for every element.
-type flyweightSet struct {
-	rules      []core.Rule
-	rebindable []core.Rebindable
-}
-
 // SliceRule is a goroutine-safe validation rule for slice values.
-// It uses a sync.Pool of per-goroutine flyweight sets to combine
-// goroutine safety with zero-alloc element validation.
+// Flyweight rules are pre-allocated once under a mutex and reused
+// via SetTarget() for all subsequent element iterations.
 type SliceRule struct {
 	config           *core.ChainConfig
 	target           any
 	name             string
 	elementTemplates []core.Template
-	pool             sync.Pool // stores *flyweightSet
+	mu               sync.Mutex
+	rules            []core.Rule
+	rebindable       []core.Rebindable
+	initialized      bool
 }
 
 // NewSliceRule creates a SliceRule from the given config, target, name,
 // and element templates for recursive validation.
 func NewSliceRule(config *core.ChainConfig, target any, name string, elementTemplates []core.Template) *SliceRule {
-	r := &SliceRule{
+	return &SliceRule{
 		config:           config,
 		target:           target,
 		name:             name,
 		elementTemplates: elementTemplates,
 	}
-	r.pool = sync.Pool{
-		New: func() any {
-			return &flyweightSet{}
-		},
-	}
-	return r
 }
 
 // Validate executes all slice-level validators and recursively validates
@@ -94,13 +83,16 @@ func (r *SliceRule) validateElements(ctx *core.Context, val reflect.Value) error
 		return nil
 	}
 
-	// Get or create per-goroutine flyweight set from the pool
-	fs := r.pool.Get().(*flyweightSet)
-
-	// Initialize flyweights on first use by this goroutine
-	if len(fs.rules) != tmplCount {
-		fs.rules = make([]core.Rule, tmplCount)
-		fs.rebindable = make([]core.Rebindable, tmplCount)
+	// Lazy pre-allocation: initialize flyweight rules once, protected by mutex.
+	// Subsequent calls use SetTarget() on the pre-bound rules (zero alloc per element).
+	if !r.initialized {
+		r.mu.Lock()
+		if !r.initialized {
+			r.rules = make([]core.Rule, tmplCount)
+			r.rebindable = make([]core.Rebindable, tmplCount)
+			r.initialized = true
+		}
+		r.mu.Unlock()
 	}
 
 	for i := 0; i < val.Len(); i++ {
@@ -115,30 +107,26 @@ func (r *SliceRule) validateElements(ctx *core.Context, val reflect.Value) error
 
 		bindTarget := safeReflect.ResolveValue(elem)
 		for j, tmpl := range r.elementTemplates {
-			if fs.rules[j] == nil {
+			if r.rules[j] == nil {
 				// First element: Bind to create the flyweight Rule
-				fs.rules[j] = tmpl.Bind(bindTarget, "")
-				if rb, ok := fs.rules[j].(core.Rebindable); ok {
-					fs.rebindable[j] = rb
+				r.rules[j] = tmpl.Bind(bindTarget, "")
+				if rb, ok := r.rules[j].(core.Rebindable); ok {
+					r.rebindable[j] = rb
 				}
-			} else if fs.rebindable[j] != nil {
+			} else if r.rebindable[j] != nil {
 				// Subsequent elements: reuse via SetTarget (zero alloc)
-				fs.rebindable[j].SetTarget(bindTarget)
+				r.rebindable[j].SetTarget(bindTarget)
 			} else {
-				// Fallback: rebind if the rule doesn't support Rebindable
-				fs.rules[j] = tmpl.Bind(bindTarget, "")
+				r.rules[j] = tmpl.Bind(bindTarget, "")
 			}
 
-			if err := fs.rules[j].Validate(ctx); err != nil {
-				r.pool.Put(fs)
+			if err := r.rules[j].Validate(ctx); err != nil {
 				ctx.Pop()
 				return err
 			}
 		}
 		ctx.Pop()
 	}
-
-	r.pool.Put(fs)
 	return nil
 }
 

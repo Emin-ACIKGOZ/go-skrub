@@ -194,8 +194,8 @@ Defaults are goroutine-safe. A `BindCAS()` fast path is available for single-gor
 
 | Scenario | go-skrub (Bind) | go-skrub (BindCAS) | go-validator |
 |----------|----------------|-------------------|-------------|
-| Small struct (4 fields) | **950ns** / 7 allocs | 1,164ns / 13 allocs | 1,500ns / 10 allocs |
-| Deep matrix (1000 el) | 147μs / 1,472 allocs | **43μs** / 2 allocs | 107μs / 2,322 allocs |
+| Small struct (4 fields) | **1,010ns** / 7 allocs | 1,164ns / 13 allocs | 1,620ns / 10 allocs |
+| Deep matrix (1000 el) | **113μs** / 1,252 allocs | **43μs** / 2 allocs | 113μs / 2,322 allocs |
 | URL validation | **305ns** / 2 allocs | — | — |
 | Email validation | **492ns** / 1 alloc | — | 900ns / 5 allocs |
 
