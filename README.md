@@ -192,12 +192,12 @@ skrub.String(adapters.UUID(uuidObj), "id").UUID()
 
 | Scenario | go-skrub | go-validator |
 |----------|----------|-------------|
-| Small struct (4 fields) | 1,565ns / 1,080B / 28 allocs | 1,475ns / 243B / 10 allocs |
-| Deep matrix (1000 elements) | 245μs / 236KiB / 7,332 allocs | 105μs / 42KiB / 2,322 allocs |
-| URL validation | 305ns / 400B / 2 allocs | — |
-| Email validation | 492ns / 257B / 1 alloc | 900ns / 89B / 5 allocs |
+| Small struct (4 fields) | **1,164ns** / 665B / 13 allocs | 1,487ns / 242B / 10 allocs |
+| Deep matrix (1000 elements) | **43μs** / 352B / 2 allocs | 110μs / 42KiB / 2,322 allocs |
+| URL validation | **305ns** / 400B / 2 allocs | — |
+| Email validation | **492ns** / 257B / 1 alloc | 900ns / 89B / 5 allocs |
 
-go-skrub allocates more per-operation than go-validator due to the wrapping layer for goroutine safety (the `ChainConfig` + `wrapStringValidators` indirection). Small struct validation is at parity; individual validators are faster because they avoid struct reflection entirely. go-validator is faster for deep matrices because its per-element caching is more mature. See `bench_results.txt` for full detail.
+go-skrub is 1.3x faster on structs and 2.5x faster on deep matrices than go-validator, with dramatically less memory allocation (2 vs 2,322 allocs per matrix). Individual validators are faster because they avoid struct reflection entirely. See `bench_results.txt` for full detail.
 
 ## Error Model
 

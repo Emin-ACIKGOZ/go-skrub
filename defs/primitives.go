@@ -25,12 +25,21 @@ func NewStringDef() *StringDef {
 }
 
 // Bind creates a lightweight StringChain bound to the target.
-// It applies all pre-configured modifiers to the new chain instance.
+// The returned chain has CAS guards and should NOT be shared across goroutines.
+// For goroutine-safe validation, use BindStateless.
 //
 // Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
 // *StringChain with CAS guards and will be removed in v0.6.0.
 func (d *StringDef) Bind(target any, name string) core.Rule {
-	return d.BindStateless(target, name)
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
+
+	chain := chains.NewStringChain(target, name)
+	for _, mod := range modifiers {
+		mod(chain)
+	}
+	return chain
 }
 
 // BindStateless creates a goroutine-safe StringRule bound to the target.
@@ -178,7 +187,15 @@ func NewIntDef() *IntDef {
 // Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
 // *IntChain with CAS guards and will be removed in v0.6.0.
 func (d *IntDef) Bind(target any, name string) core.Rule {
-	return d.BindStateless(target, name)
+	d.mu.Lock()
+	modifiers := d.modifiers
+	d.mu.Unlock()
+
+	chain := chains.NewIntChain(target, name)
+	for _, mod := range modifiers {
+		mod(chain)
+	}
+	return chain
 }
 
 // BindStateless creates a goroutine-safe IntRule bound to the target.

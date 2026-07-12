@@ -35,7 +35,17 @@ func NewSliceDef() *SliceDef {
 // Deprecated: Use BindStateless for a goroutine-safe Rule. Bind returns a
 // *SliceChain with CAS guards and will be removed in v0.6.0.
 func (d *SliceDef) Bind(target any, name string) core.Rule {
-	return d.BindStateless(target, name)
+	d.mu.Lock()
+	modifiers := d.modifiers
+	elements := d.elementTemplates
+	d.mu.Unlock()
+
+	chain := chains.NewSliceChain(target, name)
+	chain.Elements(elements...)
+	for _, mod := range modifiers {
+		mod(chain)
+	}
+	return chain
 }
 
 // BindStateless creates a goroutine-safe SliceRule bound to the target.
