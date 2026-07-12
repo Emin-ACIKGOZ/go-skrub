@@ -5,7 +5,6 @@
 package parity
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/Emin-ACIKGOZ/go-skrub"
@@ -13,44 +12,6 @@ import (
 	"github.com/Emin-ACIKGOZ/go-skrub/pkg/core"
 	validator "github.com/go-playground/validator/v10"
 )
-
-// parityCase is a single test case that should produce the same pass/fail
-// result in both go-validator and go-skrub.
-type parityCase struct {
-	name     string
-	tag      string
-	value    any
-	expectGV bool // expected pass/fail for go-validator
-	expectSK bool // expected pass/fail for go-skrub
-}
-
-// runParityCases runs all parity cases against both validators.
-func runParityCases(t *testing.T, v *validator.Validate, cases []parityCase) {
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			gvErr := v.Var(tc.value, tc.tag)
-			gvValid := gvErr == nil
-
-			skErr := skrub.Validate(&struct{}{},
-				skrub.DefString().BindStateless(toStringPtr(tc.value), "val"))
-			skValid := skErr == nil
-
-			if gvValid != tc.expectGV {
-				t.Errorf("go-validator(%q=%v): got valid=%v, want %v",
-					tc.tag, tc.value, gvValid, tc.expectGV)
-			}
-			if skValid != tc.expectSK {
-				t.Errorf("go-skrub(%q=%v): got valid=%v, want %v",
-					tc.tag, tc.value, skValid, tc.expectSK)
-			}
-		})
-	}
-}
-
-func toStringPtr(v any) *string {
-	s := fmt.Sprintf("%v", v)
-	return &s
-}
 
 func TestEmailParity(t *testing.T) {
 	v := validator.New()
@@ -428,23 +389,6 @@ func TestTagParsingMapKeys(t *testing.T) {
 	})
 }
 
-func TestTagParsingAlias(t *testing.T) {
-	// Test that aliases expand correctly in tag parsing.
-	// The expanded tag is processed by the same validator pipeline.
-	// Underlying validators (hexcolor, rgb, etc.) are not yet implemented.
-	type SkTarget struct {
-		Name string `validate:"iscolor"`
-	}
-
-	// Verify the alias is registered and doesn't error
-	rule := defs.NewStructDef().UseTags().Bind(&SkTarget{})
-	ctx := core.NewContext(core.Config{})
-	err := rule.Validate(ctx)
-	// The alias expands correctly; validation may fail because underlying
-	// validators aren't implemented, but it shouldn't produce an alias error
-	_ = err
-}
-
 func TestTagParsingIsDefault(t *testing.T) {
 	type GvTarget struct {
 		Name string `validate:"isdefault"`
@@ -518,6 +462,266 @@ func TestTagParsingOmitZero(t *testing.T) {
 			t.Errorf("go-skrub: non-nil empty slice should NOT be skipped, got %v", err)
 		}
 	})
+}
+
+func TestTagParsingOmitNil(t *testing.T) {
+	type GvTarget struct {
+		Value *string `validate:"omitnil,min=3"`
+	}
+	type SkTarget struct {
+		Value *string `validate:"omitnil,min=3"`
+	}
+
+	v := validator.New()
+
+	t.Run("nil_skips", func(t *testing.T) {
+		gv := GvTarget{}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass for nil, got %v", err)
+		}
+		sk := SkTarget{}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass for nil, got %v", err)
+		}
+	})
+
+	t.Run("short_fails", func(t *testing.T) {
+		str := "ab"
+		gv := GvTarget{Value: &str}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure for short value")
+		}
+		sk := SkTarget{Value: &str}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure for short value")
+		}
+	})
+}
+
+func TestTagParsingSkipTag(t *testing.T) {
+	type GvTarget struct {
+		Skip string `validate:"-"`
+		Keep string `validate:"required"`
+	}
+	type SkTarget struct {
+		Skip string `validate:"-"`
+		Keep string `validate:"required"`
+	}
+
+	v := validator.New()
+
+	t.Run("skipped_field_not_validated", func(t *testing.T) {
+		gv := GvTarget{Skip: "", Keep: "hello"}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget{Skip: "", Keep: "hello"}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+}
+
+func TestTagParsingRequiredInt(t *testing.T) {
+	type GvTarget struct {
+		Age int `validate:"required"`
+	}
+	type SkTarget struct {
+		Age int `validate:"required"`
+	}
+
+	v := validator.New()
+
+	t.Run("non_zero_passes", func(t *testing.T) {
+		gv := GvTarget{Age: 25}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget{Age: 25}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+
+	t.Run("zero_fails", func(t *testing.T) {
+		gv := GvTarget{Age: 0}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure for zero")
+		}
+		sk := SkTarget{Age: 0}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure for zero")
+		}
+	})
+}
+
+func TestTagParsingGteLte(t *testing.T) {
+	type GvTarget struct {
+		Val int `validate:"gte=10,lte=20"`
+	}
+	type SkTarget struct {
+		Val int `validate:"gte=10,lte=20"`
+	}
+
+	v := validator.New()
+
+	t.Run("valid", func(t *testing.T) {
+		gv := GvTarget{Val: 15}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget{Val: 15}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+
+	t.Run("below_min", func(t *testing.T) {
+		gv := GvTarget{Val: 5}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure")
+		}
+		sk := SkTarget{Val: 5}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure")
+		}
+	})
+
+	t.Run("above_max", func(t *testing.T) {
+		gv := GvTarget{Val: 25}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure")
+		}
+		sk := SkTarget{Val: 25}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure")
+		}
+	})
+}
+
+func TestTagParsingNestedDive(t *testing.T) {
+	type GvTarget struct {
+		Matrix [][]string `validate:"dive,dive,min=2"`
+	}
+	type SkTarget struct {
+		Matrix [][]string `validate:"dive,dive,min=2"`
+	}
+
+	v := validator.New()
+
+	t.Run("valid", func(t *testing.T) {
+		gv := GvTarget{Matrix: [][]string{{"ab", "cd"}, {"ef", "gh"}}}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget{Matrix: [][]string{{"ab", "cd"}, {"ef", "gh"}}}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+
+	t.Run("inner_element_too_short", func(t *testing.T) {
+		gv := GvTarget{Matrix: [][]string{{"a", "cd"}}}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure for short element")
+		}
+		sk := SkTarget{Matrix: [][]string{{"a", "cd"}}}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure for short element")
+		}
+	})
+}
+
+func TestTagParsingIPv4IPv6(t *testing.T) {
+	type GvTarget4 struct {
+		Addr string `validate:"ipv4"`
+	}
+	type SkTarget4 struct {
+		Addr string `validate:"ipv4"`
+	}
+	type GvTarget6 struct {
+		Addr string `validate:"ipv6"`
+	}
+	type SkTarget6 struct {
+		Addr string `validate:"ipv6"`
+	}
+
+	v := validator.New()
+
+	t.Run("ipv4_valid", func(t *testing.T) {
+		gv := GvTarget4{Addr: "192.168.1.1"}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget4{Addr: "192.168.1.1"}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+
+	t.Run("ipv4_rejects_ipv6", func(t *testing.T) {
+		gv := GvTarget4{Addr: "2001:db8::1"}
+		if err := v.Struct(gv); err == nil {
+			t.Error("go-validator: expected failure for ipv6 in ipv4")
+		}
+		sk := SkTarget4{Addr: "2001:db8::1"}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err == nil {
+			t.Error("go-skrub: expected failure for ipv6 in ipv4")
+		}
+	})
+
+	t.Run("ipv6_valid", func(t *testing.T) {
+		gv := GvTarget6{Addr: "2001:db8::1"}
+		if err := v.Struct(gv); err != nil {
+			t.Errorf("go-validator: expected pass, got %v", err)
+		}
+		sk := SkTarget6{Addr: "2001:db8::1"}
+		rule := defs.NewStructDef().UseTags().Bind(&sk)
+		ctx := core.NewContext(core.Config{})
+		if err := rule.Validate(ctx); err != nil {
+			t.Errorf("go-skrub: expected pass, got %v", err)
+		}
+	})
+}
+
+func TestTagParsingAliasExpansion(t *testing.T) {
+	type SkTarget struct {
+		Color string `validate:"iscolor"`
+	}
+
+	// The alias "iscolor" should expand to "hexcolor|rgb|rgba|hsl|hsla|cmyk"
+	// without error. The expanded validators (hexcolor, etc.) may not exist,
+	// but the alias expansion itself must succeed.
+	rule := defs.NewStructDef().UseTags().Bind(&SkTarget{})
+	ctx := core.NewContext(core.Config{})
+	err := rule.Validate(ctx)
+	// We don't care about the result (hexcolor isn't implemented),
+	// but we care that the rule was created without an error from alias expansion
+	_ = err
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +822,13 @@ func TestTagStructureParity(t *testing.T) {
 	t.Run("IsDefault", TestTagParsingIsDefault)
 	t.Run("OmitZero", TestTagParsingOmitZero)
 	t.Run("VsGoValidator", TestTagParsingVsGoValidator)
+	t.Run("OmitNil", TestTagParsingOmitNil)
+	t.Run("SkipTag", TestTagParsingSkipTag)
+	t.Run("RequiredInt", TestTagParsingRequiredInt)
+	t.Run("GteLte", TestTagParsingGteLte)
+	t.Run("NestedDive", TestTagParsingNestedDive)
+	t.Run("IPv4IPv6", TestTagParsingIPv4IPv6)
+	t.Run("AliasExpansion", TestTagParsingAliasExpansion)
 }
 
 // BenchmarkTagProcessParity benchmarks both validators processing the same
